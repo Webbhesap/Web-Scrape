@@ -14,7 +14,9 @@
     // Open Dashboard Button
     document.getElementById('btn-open-dashboard').addEventListener('click', () => {
       if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
-        chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
+        chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') }, () => {
+          if (chrome.runtime.lastError) { /* consume */ }
+        });
       } else {
         window.open('../dashboard/dashboard.html', '_blank');
       }
@@ -24,10 +26,17 @@
     document.getElementById('btn-scrape-current-tab').addEventListener('click', () => {
       if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs && tabs.length > 0) {
+          if (!chrome.runtime.lastError && tabs && tabs.length > 0 && tabs[0].url) {
             const currentUrl = tabs[0].url;
             const dashboardUrl = chrome.runtime.getURL(`dashboard/dashboard.html?newUrl=${encodeURIComponent(currentUrl)}`);
-            chrome.tabs.create({ url: dashboardUrl });
+            chrome.tabs.create({ url: dashboardUrl }, () => {
+              if (chrome.runtime.lastError) { /* consume */ }
+            });
+          } else {
+            const dashboardUrl = chrome.runtime.getURL('dashboard/dashboard.html');
+            chrome.tabs.create({ url: dashboardUrl }, () => {
+              if (chrome.runtime.lastError) { /* consume */ }
+            });
           }
         });
       } else {

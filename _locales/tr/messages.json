@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Web Scraper - Ücretsiz Web Kazıma Aracı",
+    "description": "Eklentinin adı"
+  },
+  "extensionDescription": {
+    "message": "Dinamik web sayfalarından çok seviyeli gezinme, sayfalama, sonsuz kaydırma ve görsel seçicilerle veri çıkarın; CSV, Excel ve JSON olarak dışa aktarın.",
+    "description": "Eklentinin açıklaması"
+  }
+}

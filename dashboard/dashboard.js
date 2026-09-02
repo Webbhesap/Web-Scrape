@@ -767,38 +767,95 @@
     renderSelectorsList();
   }
 
+  function getTargetTabId(callback) {
+    // 1. If running inside DevTools panel, inspectedWindow.tabId is the exact inspected tab!
+    if (typeof chrome !== 'undefined' && chrome.devtools && chrome.devtools.inspectedWindow && chrome.devtools.inspectedWindow.tabId) {
+      callback(chrome.devtools.inspectedWindow.tabId);
+      return;
+    }
+
+    // 2. If running in normal browser window / popup / dashboard tab:
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!chrome.runtime.lastError && tabs && tabs.length > 0 && tabs[0].id) {
+          callback(tabs[0].id);
+          return;
+        }
+
+        // Fallback to active tab in last focused window
+        chrome.tabs.query({ active: true, lastFocusedWindow: true }, (fallbackTabs) => {
+          if (!chrome.runtime.lastError && fallbackTabs && fallbackTabs.length > 0 && fallbackTabs[0].id) {
+            callback(fallbackTabs[0].id);
+          } else {
+            callback(null);
+          }
+        });
+      });
+      return;
+    }
+
+    callback(null);
+  }
+
   function launchElementPicker(mode) {
     const selStr = elements.fieldSelectorCss.value.trim();
     const selType = elements.fieldSelectorType.value;
     const isMult = elements.fieldSelectorMultiple.checked;
 
-    // Check if running inside Chrome extension tab context
-    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!tabs || tabs.length === 0) {
-          alert('No active browser tab found.');
+    // Check if running in Chrome extension environment
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.scripting) {
+      getTargetTabId((tabId) => {
+        if (!tabId) {
+          alert('No active webpage tab found to select elements from. Please open a webpage in Chrome.');
           return;
         }
-        const tabId = tabs[0].id;
 
-        // Inject picker scripts
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          files: ['content/selector_picker.js']
-        }, () => {
-          chrome.scripting.insertCSS({
+        // Check if tab still exists
+        chrome.tabs.get(tabId, (tabInfo) => {
+          if (chrome.runtime.lastError || !tabInfo) {
+            console.warn('Target tab does not exist or was closed:', chrome.runtime.lastError?.message);
+            alert('Target webpage tab was closed or is not accessible.');
+            return;
+          }
+
+          if (tabInfo.url && (tabInfo.url.startsWith('chrome://') || tabInfo.url.startsWith('edge://') || tabInfo.url.startsWith('chrome-extension://') || tabInfo.url.startsWith('about:'))) {
+            alert('Cannot select elements on browser system pages (chrome://). Please navigate to a standard website (http:// or https://).');
+            return;
+          }
+
+          // Inject picker scripts
+          chrome.scripting.executeScript({
             target: { tabId: tabId },
-            files: ['content/selector_picker.css']
+            files: ['content/selector_picker.js']
           }, () => {
-            let msgType = 'START_PICKER';
-            if (mode === 'preview') msgType = 'ELEMENT_PREVIEW';
-            else if (mode === 'data-preview') msgType = 'DATA_PREVIEW';
+            if (chrome.runtime.lastError) {
+              console.warn('Script injection error:', chrome.runtime.lastError.message);
+              alert('Could not attach selector tool to this page: ' + chrome.runtime.lastError.message);
+              return;
+            }
 
-            chrome.tabs.sendMessage(tabId, {
-              type: msgType,
-              selector: selStr,
-              type: selType,
-              multiple: isMult
+            chrome.scripting.insertCSS({
+              target: { tabId: tabId },
+              files: ['content/selector_picker.css']
+            }, () => {
+              if (chrome.runtime.lastError) {
+                console.warn('CSS injection warning:', chrome.runtime.lastError.message);
+              }
+
+              let msgType = 'START_PICKER';
+              if (mode === 'preview') msgType = 'ELEMENT_PREVIEW';
+              else if (mode === 'data-preview') msgType = 'DATA_PREVIEW';
+
+              chrome.tabs.sendMessage(tabId, {
+                type: msgType,
+                selector: selStr,
+                type: selType,
+                multiple: isMult
+              }, () => {
+                if (chrome.runtime.lastError) {
+                  console.warn('Message send warning:', chrome.runtime.lastError.message);
+                }
+              });
             });
           });
         });
@@ -1006,29 +1063,65 @@
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.scripting) {
       return async (url) => {
         return new Promise((resolve, reject) => {
-          // Open or reuse background tab
           chrome.tabs.create({ url: url, active: false }, (tab) => {
+            if (chrome.runtime.lastError || !tab) {
+              reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : 'Failed to create background scraping tab'));
+              return;
+            }
+
             const tabId = tab.id;
+            let isDone = false;
+            let tabClosed = false;
+
+            const cleanup = () => {
+              try { chrome.tabs.onUpdated.removeListener(onUpdated); } catch (e) {}
+              try { chrome.tabs.onRemoved.removeListener(onRemoved); } catch (e) {}
+              if (!tabClosed) {
+                chrome.tabs.remove(tabId, () => {
+                  if (chrome.runtime.lastError) { /* consume */ }
+                });
+              }
+            };
+
+            const onRemoved = (removedTabId) => {
+              if (removedTabId === tabId) {
+                tabClosed = true;
+                if (!isDone) {
+                  isDone = true;
+                  cleanup();
+                  reject(new Error(`Scraping tab ${tabId} was closed.`));
+                }
+              }
+            };
+            chrome.tabs.onRemoved.addListener(onRemoved);
 
             const onUpdated = (updatedTabId, changeInfo) => {
               if (updatedTabId === tabId && changeInfo.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(onUpdated);
+                if (isDone) return;
+                isDone = true;
+                cleanup();
 
-                // Inject content script and extract DOM
-                chrome.scripting.executeScript({
-                  target: { tabId: tabId },
-                  func: () => document.documentElement.outerHTML
-                }, (results) => {
-                  chrome.tabs.remove(tabId);
-                  if (chrome.runtime.lastError || !results || !results[0]) {
-                    reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : 'Failed to extract HTML'));
-                    return;
-                  }
-                  const html = results[0].result;
-                  const parser = new DOMParser();
-                  const doc = parser.parseFromString(html, 'text/html');
-                  resolve({ document: doc, url: url });
-                });
+                // Wait for page scripts and dynamic DOM
+                setTimeout(() => {
+                  chrome.scripting.executeScript({
+                    target: { tabId: tabId },
+                    func: () => document.documentElement.outerHTML
+                  }, (results) => {
+                    const lastErr = chrome.runtime.lastError;
+                    if (lastErr || !results || !results[0]) {
+                      reject(new Error(lastErr ? lastErr.message : 'Failed to extract HTML from tab'));
+                      return;
+                    }
+                    try {
+                      const html = results[0].result;
+                      const parser = new DOMParser();
+                      const doc = parser.parseFromString(html, 'text/html');
+                      resolve({ document: doc, url: url });
+                    } catch (err) {
+                      reject(err);
+                    }
+                  });
+                }, 200);
               }
             };
 

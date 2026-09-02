@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Web Scraper - Free Web Scraping Tool",
+    "description": "Name of the extension"
+  },
+  "extensionDescription": {
+    "message": "Extract data from dynamic web pages with multi-level navigation, pagination, infinite scroll, visual selectors, and export to CSV, Excel, and JSON.",
+    "description": "Description of the extension"
+  }
+}
