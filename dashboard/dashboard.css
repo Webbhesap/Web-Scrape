@@ -212,10 +212,11 @@ body {
 /* Main Container */
 .main-container {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
-  display: flex;
-  flex-direction: column;
+  display: block;
 }
 
 /* Views */
@@ -223,11 +224,21 @@ body {
   display: none;
   flex-direction: column;
   gap: 16px;
-  height: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  padding-bottom: 40px;
 }
 
 .view-panel.active {
   display: flex;
+}
+
+#view-selector-graph.active {
+  height: calc(100vh - 96px);
+  min-height: 360px;
+  padding-bottom: 0;
+  overflow: hidden;
 }
 
 /* Cards */
@@ -235,8 +246,15 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+#view-gallery .card,
+#view-browse-data .card,
+#view-sitemaps .card,
+#view-selectors .card {
+  overflow: hidden;
 }
 
 .card-header {
@@ -577,9 +595,15 @@ textarea.form-control {
 }
 .drag-handle:active { cursor: grabbing; }
 tr.selector-row.dragging { opacity: 0.45; }
-tr.selector-row.drop-target td {
+tr.selector-row.drop-nest td {
   outline: 2px dashed var(--primary);
-  background: rgba(13, 148, 136, 0.12);
+  background: rgba(13, 148, 136, 0.16);
+}
+tr.selector-row.drop-before td {
+  box-shadow: inset 0 3px 0 var(--accent-blue);
+}
+tr.selector-row.drop-after td {
+  box-shadow: inset 0 -3px 0 var(--accent-blue);
 }
 .drop-root-zone {
   margin-bottom: 8px;
@@ -630,6 +654,7 @@ tr.selector-row.drop-target td {
   display: grid;
   gap: 12px;
   padding: 16px;
+  overflow: visible;
 }
 .gallery-card {
   background: var(--bg-input);
@@ -638,14 +663,24 @@ tr.selector-row.drop-target td {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 .gallery-card img {
   width: 100%;
-  height: 160px;
+  height: auto;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
   background: #060911;
   cursor: pointer;
+  display: block;
 }
+#view-gallery[data-cols="2"] .gallery-card img { aspect-ratio: 4 / 5; }
+#view-gallery[data-cols="3"] .gallery-card img { aspect-ratio: 1 / 1; }
+#view-gallery[data-cols="4"] .gallery-card img { aspect-ratio: 1 / 1; }
+#view-gallery[data-cols="5"] .gallery-card img { aspect-ratio: 4 / 5; }
+#view-gallery[data-cols="6"] .gallery-card img { aspect-ratio: 1 / 1; }
+#view-gallery[data-cols="7"] .gallery-card img { aspect-ratio: 1 / 1; }
+#view-gallery[data-cols="8"] .gallery-card img { aspect-ratio: 1 / 1; }
 .gallery-card .gallery-meta {
   padding: 8px;
   display: flex;

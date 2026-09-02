@@ -522,19 +522,25 @@
         e.dataTransfer.setData('text/selector-id', sel.id);
         e.dataTransfer.effectAllowed = 'move';
       });
-      tr.addEventListener('dragend', () => tr.classList.remove('dragging'));
+      tr.addEventListener('dragend', () => {
+        tr.classList.remove('dragging');
+        document.querySelectorAll('.selector-row').forEach(r => r.classList.remove('drop-nest', 'drop-before', 'drop-after'));
+      });
       tr.addEventListener('dragover', (e) => {
         e.preventDefault();
-        tr.classList.add('drop-target');
+        const mode = dropModeForRow(e, tr, canHaveChildren);
+        tr.classList.remove('drop-nest', 'drop-before', 'drop-after');
+        tr.classList.add(mode);
       });
-      tr.addEventListener('dragleave', () => tr.classList.remove('drop-target'));
+      tr.addEventListener('dragleave', () => tr.classList.remove('drop-nest', 'drop-before', 'drop-after'));
       tr.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        tr.classList.remove('drop-target');
+        const mode = dropModeForRow(e, tr, canHaveChildren);
+        tr.classList.remove('drop-nest', 'drop-before', 'drop-after');
         const draggedId = e.dataTransfer.getData('text/selector-id');
         if (draggedId && draggedId !== sel.id) {
-          reparentSelectorByDrag(draggedId, sel.id);
+          handleSelectorDrop(draggedId, sel.id, mode);
         }
       });
 
@@ -552,11 +558,41 @@
     });
   }
 
+  function dropModeForRow(e, tr, canNest) {
+    const rect = tr.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    if (canNest && y > rect.height * 0.28 && y < rect.height * 0.72) return 'drop-nest';
+    return y < rect.height / 2 ? 'drop-before' : 'drop-after';
+  }
+
   async function reparentSelectorByDrag(selectorId, newParentId) {
     if (!state.currentSitemap) return;
+    const parent = newParentId === '_root' ? { acceptsChildren: true, type: '_root' } : state.currentSitemap.getSelectorById(newParentId);
+    const types = (typeof Selector === 'function' && Selector.SELECTOR_TYPES) ? Selector.SELECTOR_TYPES : {};
+    const canNest = newParentId === '_root' || (parent && (parent.acceptsChildren || (types[parent.type] && types[parent.type].acceptsChildren)));
+    if (!canNest) {
+      alert('Only container types (Element, Link, Pagination, Click, Scroll) can have children.');
+      return;
+    }
     const ok = state.currentSitemap.reparentSelector(selectorId, newParentId);
     if (!ok) {
       alert('Cannot nest this selector here (would create a cycle or invalid parent).');
+      return;
+    }
+    await AppStorage.saveSitemap(state.currentSitemap);
+    renderSelectorsList();
+  }
+
+  async function handleSelectorDrop(draggedId, targetId, mode) {
+    if (!state.currentSitemap) return;
+    let ok = false;
+    if (mode === 'drop-nest') {
+      await reparentSelectorByDrag(draggedId, targetId);
+      return;
+    }
+    ok = state.currentSitemap.reorderSibling(draggedId, targetId, mode === 'drop-after');
+    if (!ok) {
+      alert('Could not reorder selectors.');
       return;
     }
     await AppStorage.saveSitemap(state.currentSitemap);
@@ -1472,9 +1508,12 @@
 
     const btnFr = document.getElementById('btn-toggle-find-replace');
     if (btnFr) {
-      btnFr.addEventListener('click', () => {
+      btnFr.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const bar = document.getElementById('find-replace-bar');
-        if (bar) bar.classList.toggle('open');
+        if (!bar) return;
+        bar.classList.toggle('open');
         populateFindColumns();
       });
     }
@@ -1493,6 +1532,8 @@
         if (label) label.textContent = n;
         const grid = document.getElementById('gallery-grid');
         if (grid) grid.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+        const galleryView = document.getElementById('view-gallery');
+        if (galleryView) galleryView.setAttribute('data-cols', String(n));
       });
     }
     const btnSlide = document.getElementById('btn-start-slideshow');
@@ -1756,6 +1797,8 @@
     if (badge) badge.textContent = state.galleryItems.length + ' images';
     const cols = (document.getElementById('gallery-columns') || {}).value || 4;
     grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    const galleryView = document.getElementById('view-gallery');
+    if (galleryView) galleryView.setAttribute('data-cols', String(cols));
     grid.innerHTML = '';
     if (state.galleryItems.length === 0) {
       grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">No images found</div><div>Scrape image selectors or URLs ending in jpg/png/webp.</div></div>';
@@ -1823,8 +1866,10 @@
     if (!state.galleryItems.length) return;
     slideIndex = Math.max(0, Math.min(index || 0, state.galleryItems.length - 1));
     const overlay = document.getElementById('slideshow-overlay');
+    if (!overlay) return;
     overlay.classList.add('open');
     const thumbs = document.getElementById('slideshow-thumbs');
+    if (!thumbs) return;
     thumbs.innerHTML = '';
     state.galleryItems.forEach((item, i) => {
       const t = document.createElement('img');
@@ -1841,6 +1886,7 @@
     if (!items.length) return;
     const item = items[slideIndex];
     const img = document.getElementById('slideshow-image');
+    if (!img) return;
     img.style.animation = 'none';
     void img.offsetWidth;
     img.style.animation = '';

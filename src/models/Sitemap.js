@@ -164,6 +164,28 @@
       return true;
     }
 
+    reorderSibling(draggedId, targetId, placeAfter) {
+      const dragged = this.getSelectorById(draggedId);
+      const target = this.getSelectorById(targetId);
+      if (!dragged || !target || draggedId === targetId) return false;
+      const targetParent = (target.parentSelectors && target.parentSelectors[0]) || '_root';
+      if (this.wouldCreateCycle(draggedId, targetParent)) return false;
+      dragged.parentSelectors = [targetParent];
+      const arr = this.selectors;
+      const from = arr.findIndex(s => s.id === draggedId);
+      if (from < 0) return false;
+      const [item] = arr.splice(from, 1);
+      let to = arr.findIndex(s => s.id === targetId);
+      if (to < 0) {
+        arr.push(item);
+      } else {
+        if (placeAfter) to += 1;
+        arr.splice(to, 0, item);
+      }
+      this.updatedAt = new Date().toISOString();
+      return true;
+    }
+
     addSelector(selector) {
       const selInstance = selector instanceof Selector ? selector : new Selector(selector);
       const existingIdx = this.selectors.findIndex(s => s.id === selInstance.id);

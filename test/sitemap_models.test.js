@@ -88,6 +88,9 @@ test('Sitemap Model - Drag reparent without cycles', () => {
   assert.deepEqual(sitemap.getSelectorById('title').parentSelectors, ['card']);
   assert.equal(sitemap.reparentSelector('card', 'title'), false);
   assert.equal(sitemap.reparentSelector('title', 'title'), false);
+  sitemap.reparentSelector('title', '_root');
+  assert.equal(sitemap.reorderSibling('title', 'card', false), true);
+  assert.equal(sitemap.selectors[0].id, 'title');
 });
 
 test('Sitemap Model - Auto Slugification & URL Normalization', () => {
