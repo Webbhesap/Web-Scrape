@@ -3,12 +3,16 @@
  * Supports all Web Scraper selector types.
  */
 (function (root, factory) {
+  const result = factory();
   if (typeof define === 'function' && define.amd) {
-    define([], factory);
+    define([], () => result);
   } else if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
-  } else {
-    root.Selector = factory();
+    module.exports = result;
+  }
+  if (root) {
+    // Browser global must be the constructor (dashboard uses `new Selector(...)`)
+    root.Selector = result.Selector;
+    root.Selector.SELECTOR_TYPES = result.SELECTOR_TYPES;
   }
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';

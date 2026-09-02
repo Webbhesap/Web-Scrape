@@ -14,7 +14,7 @@
 }(typeof self !== 'undefined' ? self : this, function (SelectorModule, UrlRangeExpander) {
   'use strict';
 
-  const Selector = SelectorModule.Selector;
+  const Selector = (SelectorModule && SelectorModule.Selector) ? SelectorModule.Selector : SelectorModule;
 
   const TURKISH_CHAR_MAP = {
     'ç': 'c', 'Ç': 'c',

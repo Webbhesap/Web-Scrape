@@ -84,4 +84,14 @@ test('UI Integration - Dashboard HTML loads, parses scripts and initializes clea
   // Check selector types dropdown
   const selectorTypeSelect = document.getElementById('field-selector-type');
   assert.equal(selectorTypeSelect.options.length, 12, 'Should have all 12 Web Scraper selector types');
+
+  assert.equal(typeof window.Selector, 'function', 'Selector must be a constructor in the browser global');
+  assert.ok(window.Selector.SELECTOR_TYPES && window.Selector.SELECTOR_TYPES.SelectorText);
+  const sel = new window.Selector({ id: 'title', type: 'SelectorText', selector: 'h1', parentSelectors: ['_root'] });
+  assert.equal(sel.id, 'title');
+  assert.equal(typeof window.Sitemap, 'function', 'Sitemap must be a constructor');
+  const sm = new window.Sitemap({ _id: 'demo', startUrl: ['example.com'] });
+  assert.equal(sm.startUrl[0], 'https://example.com');
+  sm.addSelector(sel);
+  assert.equal(sm.getRootSelectors().length, 1);
 });
