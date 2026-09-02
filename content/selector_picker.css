@@ -1,0 +1,299 @@
+/* Web Scraper Visual Element Picker Overlay Styles */
+
+:root {
+  --ws-primary: #0d9488;
+  --ws-primary-dark: #0f766e;
+  --ws-accent: #0284c7;
+  --ws-bg: #0f172a;
+  --ws-text: #f8fafc;
+  --ws-border: #334155;
+  --ws-hover-outline: #38bdf8;
+  --ws-select-outline: #10b981;
+  --ws-preview-outline: #f59e0b;
+}
+
+/* Base overlay reset */
+#ws-picker-container * {
+  box-sizing: border-box !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  line-height: 1.4 !important;
+}
+
+/* Hover highlighter overlay */
+.ws-hover-highlight {
+  outline: 2px solid var(--ws-hover-outline) !important;
+  outline-offset: -1px !important;
+  background-color: rgba(56, 189, 248, 0.15) !important;
+  cursor: crosshair !important;
+}
+
+/* Selected elements overlay */
+.ws-selected-highlight {
+  outline: 3px solid var(--ws-select-outline) !important;
+  outline-offset: -1px !important;
+  background-color: rgba(16, 185, 129, 0.22) !important;
+}
+
+/* Element preview overlay */
+.ws-preview-highlight {
+  outline: 2px dashed var(--ws-preview-outline) !important;
+  outline-offset: -1px !important;
+  background-color: rgba(245, 158, 11, 0.2) !important;
+}
+
+/* Element tag tooltip */
+#ws-hover-tooltip {
+  position: absolute;
+  z-index: 2147483645;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.92);
+  color: #38bdf8;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace !important;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 1px solid #334155;
+  transition: opacity 0.1s ease;
+  white-space: nowrap;
+}
+
+/* Floating Control Toolbar */
+#ws-floating-toolbar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483646;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ws-text);
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 95vw;
+  user-select: none;
+  animation: ws-slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ws-slide-down {
+  from { opacity: 0; transform: translate(-50%, -20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.ws-toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #2dd4bf;
+  letter-spacing: 0.3px;
+  padding-right: 8px;
+  border-right: 1px solid var(--ws-border);
+}
+
+.ws-toolbar-brand svg {
+  width: 18px;
+  height: 18px;
+}
+
+.ws-selector-box {
+  display: flex;
+  align-items: center;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 4px 8px;
+  gap: 6px;
+}
+
+.ws-selector-input {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  color: #f1f5f9 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 12px !important;
+  width: 240px;
+  min-width: 150px;
+  max-width: 380px;
+}
+
+.ws-badge-count {
+  background: #0f766e;
+  color: #ccfbf1;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.ws-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ws-btn-primary {
+  background: #0d9488;
+  color: #ffffff;
+}
+.ws-btn-primary:hover {
+  background: #0f766e;
+}
+
+.ws-btn-secondary {
+  background: #334155;
+  color: #f1f5f9;
+}
+.ws-btn-secondary:hover {
+  background: #475569;
+}
+
+.ws-btn-warning {
+  background: #d97706;
+  color: #ffffff;
+}
+.ws-btn-warning:hover {
+  background: #b45309;
+}
+
+.ws-btn-danger {
+  background: #e11d48;
+  color: #ffffff;
+}
+.ws-btn-danger:hover {
+  background: #be123c;
+}
+
+.ws-btn-ghost {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #334155;
+}
+.ws-btn-ghost:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.ws-btn kbd {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: monospace;
+}
+
+/* Data Preview Modal */
+#ws-data-preview-modal {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90vw;
+  max-width: 900px;
+  max-height: 380px;
+  z-index: 2147483647;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ws-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ws-slide-up {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.ws-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+
+.ws-modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-modal-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+}
+.ws-modal-close:hover {
+  color: #ffffff;
+}
+
+.ws-modal-body {
+  padding: 12px;
+  overflow: auto;
+  flex: 1;
+}
+
+.ws-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.ws-preview-table th {
+  background: #1e293b;
+  color: #94a3b8;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #334155;
+  font-weight: 600;
+}
+
+.ws-preview-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #1e293b;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-preview-table tr:hover {
+  background: rgba(51, 65, 85, 0.4);
+}

@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "Web Scraper - Free Web Scraping Tool",
+  "version": "1.0.0",
+  "description": "Extract data from dynamic web pages with multi-level navigation, pagination, infinite scroll, visual selectors, and export to CSV, Excel, and JSON.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Web Scraper",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "devtools_page": "devtools/devtools.html",
+  "options_page": "dashboard/dashboard.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "unlimitedStorage",
+    "scripting",
+    "contextMenus",
+    "downloads"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/selector_picker.js",
+        "content/scraper_content.js"
+      ],
+      "css": [
+        "content/selector_picker.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/*",
+        "lib/*",
+        "icons/*",
+        "dashboard/*",
+        "devtools/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

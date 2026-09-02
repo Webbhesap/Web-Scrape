@@ -1,0 +1,514 @@
+/**
+ * Web Scraper Visual Element Picker Content Script.
+ * Provides point-and-click element selection, hover highlighting, smart generalization,
+ * parent/child traversal, live element preview, and data preview.
+ */
+(function () {
+  'use strict';
+
+  if (window.__webScraperPickerActive) {
+    return;
+  }
+
+  let isActive = false;
+  let selectedElements = [];
+  let currentHoveredElement = null;
+  let currentSelector = '';
+  let selectorType = 'SelectorText';
+  let isMultiple = false;
+  let containerEl = null;
+  let tooltipEl = null;
+  let toolbarEl = null;
+  let previewModalEl = null;
+  let isElementPreviewActive = false;
+
+  // Helpers
+  function getCleanClasses(el) {
+    if (!el || !el.classList) return [];
+    const list = Array.from(el.classList);
+    return list.filter(c => c && !c.startsWith('ws-') && !c.includes('active') && !c.includes('hover'));
+  }
+
+  function getElementDescriptor(el) {
+    if (!el || el.nodeType !== 1) return '';
+    const tag = el.tagName.toLowerCase();
+    if (el.id && !/^[0-9]+$/.test(el.id) && el.id.length < 30) {
+      return `#${CSS.escape ? CSS.escape(el.id) : el.id}`;
+    }
+    const classes = getCleanClasses(el);
+    if (classes.length > 0) {
+      return `${tag}.${classes.slice(0, 2).map(c => CSS.escape ? CSS.escape(c) : c).join('.')}`;
+    }
+    return tag;
+  }
+
+  function computeSelectorForElements(elements) {
+    if (!elements || elements.length === 0) return '';
+    if (elements.length === 1) {
+      const el = elements[0];
+      if (el.id && !/^[0-9]+$/.test(el.id) && el.id.length < 30) {
+        return `#${CSS.escape ? CSS.escape(el.id) : el.id}`;
+      }
+      const classes = getCleanClasses(el);
+      const tag = el.tagName.toLowerCase();
+      if (classes.length > 0) {
+        const classSel = `.${classes.map(c => CSS.escape ? CSS.escape(c) : c).join('.')}`;
+        if (document.querySelectorAll(classSel).length === 1) {
+          return classSel;
+        }
+        return `${tag}${classSel}`;
+      }
+      return getPathSelector(el);
+    }
+
+    // Multiple elements: find common class or tag pattern
+    let commonClasses = getCleanClasses(elements[0]);
+    for (let i = 1; i < elements.length; i++) {
+      const elClasses = new Set(getCleanClasses(elements[i]));
+      commonClasses = commonClasses.filter(c => elClasses.has(c));
+    }
+
+    const firstTag = elements[0].tagName.toLowerCase();
+    const allSameTag = elements.every(el => el.tagName.toLowerCase() === firstTag);
+
+    if (commonClasses.length > 0) {
+      const classSel = `.${commonClasses.map(c => CSS.escape ? CSS.escape(c) : c).join('.')}`;
+      return allSameTag ? `${firstTag}${classSel}` : classSel;
+    }
+
+    // Check parent container pattern
+    const parents = elements.map(el => el.parentElement).filter(Boolean);
+    if (parents.length === elements.length) {
+      const parentClasses = getCleanClasses(parents[0]);
+      if (parentClasses.length > 0) {
+        return `.${parentClasses[0]} > ${allSameTag ? firstTag : '*'}`;
+      }
+    }
+
+    return allSameTag ? firstTag : '*';
+  }
+
+  function getPathSelector(el) {
+    const path = [];
+    let cur = el;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      let desc = getElementDescriptor(cur);
+      const parent = cur.parentElement;
+      if (desc === cur.tagName.toLowerCase() && parent) {
+        const siblings = Array.from(parent.children).filter(c => c.tagName === cur.tagName);
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(cur) + 1;
+          desc += `:nth-of-type(${index})`;
+        }
+      }
+      path.unshift(desc);
+      if (path.length >= 4) break;
+      cur = parent;
+    }
+    return path.join(' > ') || el.tagName.toLowerCase();
+  }
+
+  function updateHighlights() {
+    // Clear preview highlights
+    document.querySelectorAll('.ws-preview-highlight').forEach(el => el.classList.remove('ws-preview-highlight'));
+    document.querySelectorAll('.ws-selected-highlight').forEach(el => el.classList.remove('ws-selected-highlight'));
+
+    // Highlight selected
+    selectedElements.forEach(el => el.classList.add('ws-selected-highlight'));
+
+    // If selector is present and preview enabled or auto-matching
+    if (currentSelector && currentSelector.trim() !== '') {
+      try {
+        const matched = document.querySelectorAll(currentSelector);
+        matched.forEach(el => {
+          if (!selectedElements.includes(el)) {
+            el.classList.add('ws-preview-highlight');
+          }
+        });
+
+        const countBadge = document.getElementById('ws-match-count');
+        if (countBadge) {
+          countBadge.textContent = `${matched.length} matched`;
+        }
+      } catch (e) {
+        const countBadge = document.getElementById('ws-match-count');
+        if (countBadge) countBadge.textContent = 'Invalid CSS';
+      }
+    }
+  }
+
+  function createUI() {
+    if (document.getElementById('ws-picker-container')) return;
+
+    containerEl = document.createElement('div');
+    containerEl.id = 'ws-picker-container';
+
+    // Tooltip
+    tooltipEl = document.createElement('div');
+    tooltipEl.id = 'ws-hover-tooltip';
+    tooltipEl.style.display = 'none';
+    containerEl.appendChild(tooltipEl);
+
+    // Floating Toolbar
+    toolbarEl = document.createElement('div');
+    toolbarEl.id = 'ws-floating-toolbar';
+    toolbarEl.innerHTML = `
+      <div class="ws-toolbar-brand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 6 4-4 4 4"/><path d="M12 2v10.3"/><path d="m19 11 3-3"/><path d="m22 19-5-5"/><path d="m2 19 5-5"/><path d="m5 8-3 3"/><path d="M4 14h16"/></svg>
+        <span>Web Scraper</span>
+      </div>
+      <div class="ws-selector-box">
+        <input type="text" id="ws-selector-input" class="ws-selector-input" placeholder="Click elements or enter CSS selector..." value="${currentSelector}">
+        <span id="ws-match-count" class="ws-badge-count">0 matched</span>
+      </div>
+      <div class="ws-btn-group">
+        <button id="ws-btn-parent" class="ws-btn ws-btn-secondary" title="Expand to parent element [P]">Parent <kbd>P</kbd></button>
+        <button id="ws-btn-child" class="ws-btn ws-btn-secondary" title="Narrow to child element [C]">Child <kbd>C</kbd></button>
+        <button id="ws-btn-preview" class="ws-btn ws-btn-ghost" title="Highlight all matching elements">Preview</button>
+        <button id="ws-btn-data-preview" class="ws-btn ws-btn-warning" title="Preview extracted data">Data preview</button>
+        <button id="ws-btn-done" class="ws-btn ws-btn-primary" title="Done selecting">Done selecting</button>
+        <button id="ws-btn-cancel" class="ws-btn ws-btn-danger" title="Cancel">Cancel</button>
+      </div>
+    `;
+    containerEl.appendChild(toolbarEl);
+
+    document.documentElement.appendChild(containerEl);
+
+    // Bind toolbar events
+    const selectorInput = document.getElementById('ws-selector-input');
+    selectorInput.addEventListener('input', (e) => {
+      currentSelector = e.target.value.trim();
+      updateHighlights();
+    });
+
+    document.getElementById('ws-btn-parent').addEventListener('click', expandToParent);
+    document.getElementById('ws-btn-child').addEventListener('click', narrowToChild);
+    document.getElementById('ws-btn-preview').addEventListener('click', toggleElementPreview);
+    document.getElementById('ws-btn-data-preview').addEventListener('click', showDataPreview);
+    document.getElementById('ws-btn-done').addEventListener('click', finishSelection);
+    document.getElementById('ws-btn-cancel').addEventListener('click', cancelSelection);
+  }
+
+  function destroyUI() {
+    if (currentHoveredElement) {
+      currentHoveredElement.classList.remove('ws-hover-highlight');
+      currentHoveredElement = null;
+    }
+    document.querySelectorAll('.ws-preview-highlight').forEach(el => el.classList.remove('ws-preview-highlight'));
+    document.querySelectorAll('.ws-selected-highlight').forEach(el => el.classList.remove('ws-selected-highlight'));
+
+    if (containerEl && containerEl.parentNode) {
+      containerEl.parentNode.removeChild(containerEl);
+    }
+    if (previewModalEl && previewModalEl.parentNode) {
+      previewModalEl.parentNode.removeChild(previewModalEl);
+    }
+    containerEl = null;
+    toolbarEl = null;
+    tooltipEl = null;
+    previewModalEl = null;
+    selectedElements = [];
+  }
+
+  function onMouseMove(e) {
+    if (!isActive) return;
+
+    // Ignore events inside picker toolbar
+    if (containerEl && containerEl.contains(e.target)) {
+      if (currentHoveredElement) {
+        currentHoveredElement.classList.remove('ws-hover-highlight');
+        currentHoveredElement = null;
+      }
+      if (tooltipEl) tooltipEl.style.display = 'none';
+      return;
+    }
+
+    const target = e.target;
+    if (target === currentHoveredElement) return;
+
+    if (currentHoveredElement) {
+      currentHoveredElement.classList.remove('ws-hover-highlight');
+    }
+
+    currentHoveredElement = target;
+    target.classList.add('ws-hover-highlight');
+
+    // Update tooltip
+    if (tooltipEl) {
+      const rect = target.getBoundingClientRect();
+      const desc = getElementDescriptor(target);
+      tooltipEl.textContent = desc;
+      tooltipEl.style.display = 'block';
+      tooltipEl.style.top = `${Math.max(0, rect.top + window.scrollY - 24)}px`;
+      tooltipEl.style.left = `${Math.max(0, rect.left + window.scrollX)}px`;
+    }
+  }
+
+  function onClick(e) {
+    if (!isActive) return;
+    if (containerEl && containerEl.contains(e.target)) return;
+    if (previewModalEl && previewModalEl.contains(e.target)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const target = e.target;
+
+    // Toggle selection
+    const existingIndex = selectedElements.indexOf(target);
+    if (existingIndex >= 0) {
+      selectedElements.splice(existingIndex, 1);
+    } else {
+      selectedElements.push(target);
+    }
+
+    currentSelector = computeSelectorForElements(selectedElements);
+    const input = document.getElementById('ws-selector-input');
+    if (input) input.value = currentSelector;
+
+    updateHighlights();
+  }
+
+  function onKeyDown(e) {
+    if (!isActive) return;
+
+    // Check if user is typing in selector input
+    if (document.activeElement && document.activeElement.id === 'ws-selector-input') {
+      if (e.key === 'Enter') {
+        finishSelection();
+      } else if (e.key === 'Escape') {
+        cancelSelection();
+      }
+      return;
+    }
+
+    if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      expandToParent();
+    } else if (e.key === 'c' || e.key === 'C') {
+      e.preventDefault();
+      narrowToChild();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelSelection();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      finishSelection();
+    }
+  }
+
+  function expandToParent() {
+    if (selectedElements.length === 0 && currentHoveredElement) {
+      selectedElements = [currentHoveredElement];
+    }
+    if (selectedElements.length === 0) return;
+
+    const newSelected = [];
+    selectedElements.forEach(el => {
+      if (el.parentElement && el.parentElement !== document.body && el.parentElement !== document.documentElement) {
+        newSelected.push(el.parentElement);
+      } else {
+        newSelected.push(el);
+      }
+    });
+
+    selectedElements = Array.from(new Set(newSelected));
+    currentSelector = computeSelectorForElements(selectedElements);
+    const input = document.getElementById('ws-selector-input');
+    if (input) input.value = currentSelector;
+    updateHighlights();
+  }
+
+  function narrowToChild() {
+    if (selectedElements.length === 0 && currentHoveredElement) {
+      selectedElements = [currentHoveredElement];
+    }
+    if (selectedElements.length === 0) return;
+
+    const newSelected = [];
+    selectedElements.forEach(el => {
+      if (el.firstElementChild) {
+        newSelected.push(el.firstElementChild);
+      } else {
+        newSelected.push(el);
+      }
+    });
+
+    selectedElements = Array.from(new Set(newSelected));
+    currentSelector = computeSelectorForElements(selectedElements);
+    const input = document.getElementById('ws-selector-input');
+    if (input) input.value = currentSelector;
+    updateHighlights();
+  }
+
+  function toggleElementPreview() {
+    isElementPreviewActive = !isElementPreviewActive;
+    updateHighlights();
+  }
+
+  function showDataPreview() {
+    if (!currentSelector) return;
+
+    if (previewModalEl && previewModalEl.parentNode) {
+      previewModalEl.parentNode.removeChild(previewModalEl);
+    }
+
+    let elements = [];
+    try {
+      elements = Array.from(document.querySelectorAll(currentSelector));
+    } catch (e) {
+      alert('Invalid CSS Selector: ' + currentSelector);
+      return;
+    }
+
+    previewModalEl = document.createElement('div');
+    previewModalEl.id = 'ws-data-preview-modal';
+
+    let previewRowsHtml = '';
+    elements.slice(0, 100).forEach((el, idx) => {
+      const text = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+      const href = el.getAttribute('href') || el.getAttribute('data-href') || '';
+      const src = el.getAttribute('src') || el.getAttribute('data-src') || '';
+      
+      previewRowsHtml += `
+        <tr>
+          <td style="color:#94a3b8;width:50px;">${idx + 1}</td>
+          <td>${escapeHtml(text.substring(0, 150))}</td>
+          ${href ? `<td><span style="color:#38bdf8;">${escapeHtml(href)}</span></td>` : ''}
+          ${src ? `<td><span style="color:#a855f7;">${escapeHtml(src)}</span></td>` : ''}
+        </tr>
+      `;
+    });
+
+    previewModalEl.innerHTML = `
+      <div class="ws-modal-header">
+        <div class="ws-modal-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg>
+          Data Preview (${elements.length} elements)
+        </div>
+        <button id="ws-modal-close-btn" class="ws-modal-close">&times;</button>
+      </div>
+      <div class="ws-modal-body">
+        <table class="ws-preview-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Text Content</th>
+              <th>Link / Src</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${previewRowsHtml || '<tr><td colspan="3" style="text-align:center;color:#94a3b8;">No elements found</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    document.documentElement.appendChild(previewModalEl);
+
+    document.getElementById('ws-modal-close-btn').addEventListener('click', () => {
+      if (previewModalEl && previewModalEl.parentNode) {
+        previewModalEl.parentNode.removeChild(previewModalEl);
+        previewModalEl = null;
+      }
+    });
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function finishSelection() {
+    const selectorResult = currentSelector;
+    const multipleResult = selectedElements.length > 1;
+
+    stopPicker();
+
+    // Send result to background / extension
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({
+        type: 'PICKER_RESULT',
+        selector: selectorResult,
+        multiple: multipleResult
+      });
+    }
+
+    // Custom event for direct page interactions
+    window.dispatchEvent(new CustomEvent('web_scraper_picker_result', {
+      detail: { selector: selectorResult, multiple: multipleResult }
+    }));
+  }
+
+  function cancelSelection() {
+    stopPicker();
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'PICKER_CANCELLED' });
+    }
+  }
+
+  function startPicker(options = {}) {
+    if (isActive) return;
+    isActive = true;
+    window.__webScraperPickerActive = true;
+    currentSelector = options.selector || '';
+    selectorType = options.type || 'SelectorText';
+    isMultiple = options.multiple || false;
+
+    createUI();
+
+    if (currentSelector) {
+      try {
+        selectedElements = Array.from(document.querySelectorAll(currentSelector));
+      } catch (e) {
+        selectedElements = [];
+      }
+      updateHighlights();
+    }
+
+    document.addEventListener('mousemove', onMouseMove, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
+  }
+
+  function stopPicker() {
+    if (!isActive) return;
+    isActive = false;
+    window.__webScraperPickerActive = false;
+
+    document.removeEventListener('mousemove', onMouseMove, true);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKeyDown, true);
+
+    destroyUI();
+  }
+
+  // Listen for messages from background/devtools
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.type === 'START_PICKER') {
+        startPicker(request);
+        sendResponse({ success: true });
+      } else if (request.type === 'STOP_PICKER') {
+        stopPicker();
+        sendResponse({ success: true });
+      } else if (request.type === 'ELEMENT_PREVIEW') {
+        currentSelector = request.selector || '';
+        updateHighlights();
+        sendResponse({ count: document.querySelectorAll(currentSelector).length });
+      } else if (request.type === 'DATA_PREVIEW') {
+        currentSelector = request.selector || '';
+        showDataPreview();
+        sendResponse({ success: true });
+      }
+      return true;
+    });
+  }
+
+  // Global handle for dashboard testing
+  window.__WebScraperPicker = {
+    start: startPicker,
+    stop: stopPicker,
+    computeSelector: computeSelectorForElements
+  };
+})();

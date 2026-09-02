@@ -1,0 +1,21 @@
+{
+  "name": "web-scraper",
+  "version": "1.0.0",
+  "description": "Free Web Scraping Chrome Extension built with pure HTML, CSS, and Vanilla JavaScript.",
+  "main": "background.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "web-scraper",
+    "chrome-extension",
+    "scraping",
+    "crawler",
+    "vanilla-js"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

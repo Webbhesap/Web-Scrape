@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-header">
+    <div class="popup-brand">
+      <span id="popup-logo-icon"></span>
+      <span>Web Scraper</span>
+    </div>
+    <span style="font-size: 10px; color: #94a3b8; background: #1e293b; padding: 2px 6px; border-radius: 4px;">v1.0.0</span>
+  </div>
+
+  <div class="popup-body">
+    <div class="quick-actions">
+      <button class="btn-popup btn-popup-primary" id="btn-open-dashboard">
+        <span>Open Web Scraper App</span>
+      </button>
+      <button class="btn-popup btn-popup-secondary" id="btn-scrape-current-tab">
+        <span>Scrape Current Page</span>
+      </button>
+    </div>
+
+    <div class="section-title">Saved Sitemaps</div>
+    <div class="popup-sitemap-list" id="popup-sitemap-list">
+      <!-- Populated via JS -->
+    </div>
+
+    <div class="popup-devtools-tip">
+      <strong>DevTools Tip:</strong> Press <kbd style="background:#0f172a; padding:1px 4px; border-radius:3px;">F12</kbd> or right-click Inspect anywhere to open the Web Scraper panel tab directly inside Chrome Developer Tools!
+    </div>
+  </div>
+
+  <script src="../lib/icons.js"></script>
+  <script src="../src/models/Selector.js"></script>
+  <script src="../src/models/Sitemap.js"></script>
+  <script src="../src/storage/Storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
