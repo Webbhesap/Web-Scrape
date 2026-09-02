@@ -41,8 +41,14 @@
     const urlParams = new URLSearchParams(window.location.search);
     const sitemapId = urlParams.get('sitemap');
     const viewParam = urlParams.get('view');
+    const newUrl = urlParams.get('newUrl');
     if (sitemapId) {
       openSitemap(sitemapId, viewParam || 'selectors');
+    } else if (newUrl) {
+      openCreateSitemapMeta();
+      if (elements.fieldSitemapUrls) {
+        elements.fieldSitemapUrls.value = newUrl;
+      }
     } else {
       switchView('sitemaps');
     }
@@ -906,7 +912,7 @@
               chrome.tabs.sendMessage(tabId, {
                 type: msgType,
                 selector: selStr,
-                type: selType,
+                selectorType: selType,
                 multiple: isMult
               }, () => {
                 if (chrome.runtime.lastError) {
@@ -1220,37 +1226,48 @@
             };
             chrome.tabs.onRemoved.addListener(onRemoved);
 
+            const extractHtml = () => {
+              if (isDone) return;
+              isDone = true;
+              try { chrome.tabs.onUpdated.removeListener(onUpdated); } catch (e) {}
+
+              setTimeout(() => {
+                chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  func: () => document.documentElement.outerHTML
+                }, (results) => {
+                  const lastErr = chrome.runtime.lastError;
+                  cleanup();
+                  if (lastErr || !results || !results[0]) {
+                    reject(new Error(lastErr ? lastErr.message : 'Failed to extract HTML from tab'));
+                    return;
+                  }
+                  try {
+                    const html = results[0].result;
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    resolve({ document: doc, url: url });
+                  } catch (err) {
+                    reject(err);
+                  }
+                });
+              }, 200);
+            };
+
             const onUpdated = (updatedTabId, changeInfo) => {
               if (updatedTabId === tabId && changeInfo.status === 'complete') {
-                if (isDone) return;
-                isDone = true;
-                cleanup();
-
-                // Wait for page scripts and dynamic DOM
-                setTimeout(() => {
-                  chrome.scripting.executeScript({
-                    target: { tabId: tabId },
-                    func: () => document.documentElement.outerHTML
-                  }, (results) => {
-                    const lastErr = chrome.runtime.lastError;
-                    if (lastErr || !results || !results[0]) {
-                      reject(new Error(lastErr ? lastErr.message : 'Failed to extract HTML from tab'));
-                      return;
-                    }
-                    try {
-                      const html = results[0].result;
-                      const parser = new DOMParser();
-                      const doc = parser.parseFromString(html, 'text/html');
-                      resolve({ document: doc, url: url });
-                    } catch (err) {
-                      reject(err);
-                    }
-                  });
-                }, 200);
+                extractHtml();
               }
             };
 
             chrome.tabs.onUpdated.addListener(onUpdated);
+
+            // If the tab already finished loading before the listener attached
+            chrome.tabs.get(tabId, (info) => {
+              if (!chrome.runtime.lastError && info && info.status === 'complete') {
+                extractHtml();
+              }
+            });
           });
         });
       };

@@ -6,9 +6,10 @@
 (function () {
   'use strict';
 
-  if (window.__webScraperPickerActive) {
+  if (window.__webScraperPickerLoaded) {
     return;
   }
+  window.__webScraperPickerLoaded = true;
 
   let isActive = false;
   let selectedElements = [];
@@ -452,7 +453,7 @@
     isActive = true;
     window.__webScraperPickerActive = true;
     currentSelector = options.selector || '';
-    selectorType = options.type || 'SelectorText';
+    selectorType = options.selectorType || (options.type && String(options.type).startsWith('Selector') ? options.type : 'SelectorText');
     isMultiple = options.multiple || false;
 
     createUI();
