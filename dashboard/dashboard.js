@@ -47,7 +47,7 @@
       switchView('sitemaps');
     }
 
-    // Listen for picker messages from background
+    // Listen for picker messages from background / content scripts
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener((message) => {
         if (message.type === 'PICKER_RESULT') {
@@ -96,6 +96,7 @@
     // Selector Edit Form
     elements.formSelectorEdit = document.getElementById('form-selector-edit');
     elements.selectorEditTitle = document.getElementById('selector-edit-title');
+    elements.selectorEditError = document.getElementById('selector-edit-error');
     elements.fieldSelectorId = document.getElementById('field-selector-id');
     elements.fieldSelectorType = document.getElementById('field-selector-type');
     elements.fieldSelectorTypeDesc = document.getElementById('field-selector-type-desc');
@@ -135,12 +136,14 @@
     // Sitemap Meta Form
     elements.formSitemapMeta = document.getElementById('form-sitemap-meta');
     elements.sitemapMetaTitle = document.getElementById('sitemap-meta-title');
+    elements.sitemapMetaError = document.getElementById('sitemap-meta-error');
     elements.fieldSitemapId = document.getElementById('field-sitemap-id');
     elements.fieldSitemapUrls = document.getElementById('field-sitemap-urls');
     elements.btnSaveSitemapMeta = document.getElementById('btn-save-sitemap-meta');
 
     // Sitemap Import Form
     elements.formSitemapImport = document.getElementById('form-sitemap-import');
+    elements.sitemapImportError = document.getElementById('sitemap-import-error');
     elements.fieldImportJson = document.getElementById('field-import-json');
     elements.fieldImportId = document.getElementById('field-import-id');
     elements.fileImportJson = document.getElementById('file-import-json');
@@ -302,7 +305,12 @@
   }
 
   async function loadSitemaps() {
-    state.sitemaps = await AppStorage.getAllSitemaps();
+    try {
+      state.sitemaps = await AppStorage.getAllSitemaps();
+    } catch (e) {
+      console.error('Failed to load sitemaps:', e);
+      state.sitemaps = [];
+    }
     renderSitemapsList();
   }
 
@@ -611,6 +619,10 @@
 
   function openAddSelector() {
     state.editingSelectorId = null;
+    if (elements.selectorEditError) {
+      elements.selectorEditError.style.display = 'none';
+      elements.selectorEditError.textContent = '';
+    }
     elements.selectorEditTitle.textContent = `Add Selector in "${state.currentParentSelector}"`;
     elements.formSelectorEdit.reset();
 
@@ -627,6 +639,10 @@
     if (!sel) return;
 
     state.editingSelectorId = selectorId;
+    if (elements.selectorEditError) {
+      elements.selectorEditError.style.display = 'none';
+      elements.selectorEditError.textContent = '';
+    }
     elements.selectorEditTitle.textContent = `Edit Selector "${sel.id}"`;
 
     elements.fieldSelectorId.value = sel.id;
@@ -670,7 +686,6 @@
 
     const allIds = state.currentSitemap.getAllSelectorIds();
     allIds.forEach(id => {
-      // Don't allow a selector to have itself as its parent (unless pagination)
       if (state.editingSelectorId && id === state.editingSelectorId && elements.fieldSelectorType.value !== 'SelectorPagination' && elements.fieldSelectorType.value !== 'SelectorLink') {
         return;
       }
@@ -697,16 +712,27 @@
   }
 
   async function saveSelectorForm() {
+    if (elements.selectorEditError) {
+      elements.selectorEditError.style.display = 'none';
+      elements.selectorEditError.textContent = '';
+    }
+
     const parentCheckboxes = Array.from(elements.parentSelectorsList.querySelectorAll('input[type="checkbox"]:checked'));
     const parentSelectors = parentCheckboxes.map(c => c.value);
 
     if (parentSelectors.length === 0) {
-      alert('Please select at least one parent selector (e.g. _root).');
+      showSelectorError('Please select at least one parent selector (e.g. _root).');
+      return;
+    }
+
+    const rawId = elements.fieldSelectorId.value.trim();
+    if (!rawId) {
+      showSelectorError('Selector ID is required.');
       return;
     }
 
     const selData = {
-      id: elements.fieldSelectorId.value.trim(),
+      id: rawId,
       type: elements.fieldSelectorType.value,
       selector: elements.fieldSelectorCss.value.trim(),
       multiple: elements.fieldSelectorMultiple.checked,
@@ -741,7 +767,7 @@
     const selectorInstance = new Selector(selData);
     const validation = selectorInstance.validate();
     if (!validation.isValid) {
-      alert('Validation Error:\n' + validation.errors.join('\n'));
+      showSelectorError(validation.errors.join(' '));
       return;
     }
 
@@ -755,6 +781,15 @@
     await loadSitemaps();
 
     switchView('selectors');
+  }
+
+  function showSelectorError(msg) {
+    if (elements.selectorEditError) {
+      elements.selectorEditError.textContent = msg;
+      elements.selectorEditError.style.display = 'block';
+    } else {
+      alert(msg);
+    }
   }
 
   async function deleteSelector(selectorId) {
@@ -810,7 +845,6 @@
           return;
         }
 
-        // Check if tab still exists
         chrome.tabs.get(tabId, (tabInfo) => {
           if (chrome.runtime.lastError || !tabInfo) {
             console.warn('Target tab does not exist or was closed:', chrome.runtime.lastError?.message);
@@ -876,43 +910,75 @@
 
   function openCreateSitemapMeta() {
     state.currentSitemap = null;
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.style.display = 'none';
+      elements.sitemapMetaError.textContent = '';
+    }
     elements.sitemapMetaTitle.textContent = 'Create New Sitemap';
     elements.btnSaveSitemapMeta.textContent = 'Create Sitemap';
     elements.formSitemapMeta.reset();
+    elements.fieldSitemapId.readOnly = false;
     switchView('sitemap-meta');
   }
 
   function openEditSitemapMeta() {
     if (!state.currentSitemap) return;
-    elements.sitemapMetaTitle.textContent = `Edit Metadata: ${state.currentSitemap._id}`;
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.style.display = 'none';
+      elements.sitemapMetaError.textContent = '';
+    }
+    elements.sitemapMetaTitle.textContent = `Edit Metadata: ${state.currentSitemap.name || state.currentSitemap._id}`;
     elements.btnSaveSitemapMeta.textContent = 'Save Metadata';
-    elements.fieldSitemapId.value = state.currentSitemap._id;
-    elements.fieldSitemapId.readOnly = true;
+    elements.fieldSitemapId.value = state.currentSitemap.name || state.currentSitemap._id;
+    elements.fieldSitemapId.readOnly = false;
     elements.fieldSitemapUrls.value = state.currentSitemap.startUrl.join('\n');
     switchView('sitemap-meta');
   }
 
   async function saveSitemapMetaForm() {
-    const id = elements.fieldSitemapId.value.trim();
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.style.display = 'none';
+      elements.sitemapMetaError.textContent = '';
+    }
+
+    const rawName = elements.fieldSitemapId.value.trim();
+    if (!rawName) {
+      showSitemapError('Sitemap name is required.');
+      return;
+    }
+
     const urlsRaw = elements.fieldSitemapUrls.value.trim();
     const urls = urlsRaw.split('\n').map(u => u.trim()).filter(Boolean);
 
+    if (urls.length === 0) {
+      showSitemapError('At least one Start URL is required.');
+      return;
+    }
+
     if (state.currentSitemap) {
       // Editing existing sitemap metadata
+      state.currentSitemap.name = rawName;
       state.currentSitemap.startUrl = urls;
+      
+      const validation = state.currentSitemap.validate();
+      if (!validation.isValid) {
+        showSitemapError(validation.errors.join(' '));
+        return;
+      }
+
       await AppStorage.saveSitemap(state.currentSitemap);
     } else {
       // Creating new sitemap
       const newSitemap = new Sitemap({
-        _id: id,
-        name: id,
+        _id: rawName,
+        name: rawName,
         startUrl: urls,
         selectors: []
       });
 
       const validation = newSitemap.validate();
       if (!validation.isValid) {
-        alert('Validation Error:\n' + validation.errors.join('\n'));
+        showSitemapError(validation.errors.join(' '));
         return;
       }
 
@@ -924,13 +990,36 @@
     openSitemap(state.currentSitemap._id, 'selectors');
   }
 
+  function showSitemapError(msg) {
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.textContent = msg;
+      elements.sitemapMetaError.style.display = 'block';
+    } else {
+      alert(msg);
+    }
+  }
+
   function openImportSitemap() {
+    if (elements.sitemapImportError) {
+      elements.sitemapImportError.style.display = 'none';
+      elements.sitemapImportError.textContent = '';
+    }
     elements.formSitemapImport.reset();
     switchView('sitemap-import');
   }
 
   async function importSitemapForm() {
+    if (elements.sitemapImportError) {
+      elements.sitemapImportError.style.display = 'none';
+      elements.sitemapImportError.textContent = '';
+    }
+
     const jsonStr = elements.fieldImportJson.value.trim();
+    if (!jsonStr) {
+      showImportError('Please provide Sitemap JSON.');
+      return;
+    }
+
     const nameOverride = elements.fieldImportId.value.trim();
 
     try {
@@ -943,7 +1032,7 @@
       const sitemap = new Sitemap(parsed);
       const validation = sitemap.validate();
       if (!validation.isValid) {
-        alert('Invalid Sitemap JSON:\n' + validation.errors.join('\n'));
+        showImportError('Invalid Sitemap JSON: ' + validation.errors.join(' '));
         return;
       }
 
@@ -951,7 +1040,16 @@
       await loadSitemaps();
       openSitemap(sitemap._id, 'selectors');
     } catch (e) {
-      alert('JSON Parse Error: ' + e.message);
+      showImportError('JSON Parse Error: ' + e.message);
+    }
+  }
+
+  function showImportError(msg) {
+    if (elements.sitemapImportError) {
+      elements.sitemapImportError.textContent = msg;
+      elements.sitemapImportError.style.display = 'block';
+    } else {
+      alert(msg);
     }
   }
 
@@ -974,7 +1072,7 @@
 
   async function deleteCurrentSitemap() {
     if (!state.currentSitemap) return;
-    if (confirm(`Are you sure you want to permanently delete sitemap "${state.currentSitemap._id}" and its data?`)) {
+    if (confirm(`Are you sure you want to permanently delete sitemap "${state.currentSitemap.name || state.currentSitemap._id}" and its data?`)) {
       await AppStorage.deleteSitemap(state.currentSitemap._id);
       state.currentSitemap = null;
       elements.dropdownCurrentSitemap.style.display = 'none';
@@ -1017,7 +1115,7 @@
     const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
 
     elements.scrapeLogBox.innerHTML = '';
-    logScrape('Starting scraper for sitemap: ' + state.currentSitemap._id, 'info');
+    logScrape('Starting scraper for sitemap: ' + (state.currentSitemap.name || state.currentSitemap._id), 'info');
 
     // Initialize Scraper Engine
     state.scraperEngine = new ScraperEngine(state.currentSitemap, {
@@ -1037,7 +1135,7 @@
       logScrape(`Visiting [Queue: ${data.queueLength}]: ${data.url}`, 'info');
     });
 
-    state.scraperEngine.on('recordScraped', (rec) => {
+    state.scraperEngine.on('recordScraped', () => {
       elements.metricRecords.textContent = state.scraperEngine.results.length;
     });
 
@@ -1216,7 +1314,7 @@
     });
 
     document.getElementById('btn-clear-data').addEventListener('click', async () => {
-      if (state.currentSitemap && confirm(`Clear all scraped data for "${state.currentSitemap._id}"?`)) {
+      if (state.currentSitemap && confirm(`Clear all scraped data for "${state.currentSitemap.name || state.currentSitemap._id}"?`)) {
         await AppStorage.clearScrapedData(state.currentSitemap._id);
         openBrowseData();
       }
@@ -1260,7 +1358,12 @@
 
   async function openBrowseData() {
     if (!state.currentSitemap) return;
-    state.scrapedData = await AppStorage.getScrapedData(state.currentSitemap._id);
+    try {
+      state.scrapedData = await AppStorage.getScrapedData(state.currentSitemap._id);
+    } catch (e) {
+      console.error('Failed to get scraped data:', e);
+      state.scrapedData = [];
+    }
     state.dataPagination.page = 1;
     filterAndRenderDataTable();
     switchView('browse-data');

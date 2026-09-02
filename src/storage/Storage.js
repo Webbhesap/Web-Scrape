@@ -1,15 +1,17 @@
 /**
  * Storage Engine for Web Scraper.
- * IndexedDB database with chrome.storage.local and localStorage fallbacks.
+ * Uses chrome.storage.local for synchronized extension storage with IndexedDB and localStorage fallbacks.
  */
 (function (root, factory) {
+  const result = factory();
   if (typeof define === 'function' && define.amd) {
-    define([], factory);
+    define([], () => result);
   } else if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
-  } else {
-    root.AppStorage = factory();
+    module.exports = result;
   }
+  if (root) root.AppStorage = result;
+  if (typeof window !== 'undefined') window.AppStorage = result;
+  if (typeof globalThis !== 'undefined') globalThis.AppStorage = result;
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
@@ -20,7 +22,7 @@
 
   const SAMPLE_SITEMAPS = [
     {
-      _id: 'sample-ecommerce-products',
+      _id: 'sample_ecommerce_products',
       name: 'Sample E-Commerce Store',
       startUrl: ['https://webscraper.io/test-sites/e-commerce/allinone'],
       selectors: [
@@ -79,7 +81,7 @@
       ]
     },
     {
-      _id: 'sample-data-tables',
+      _id: 'sample_data_tables',
       name: 'Sample Tables Scraper',
       startUrl: ['https://webscraper.io/test-sites/tables'],
       selectors: [
@@ -106,72 +108,100 @@
   class AppStorage {
     constructor() {
       this.db = null;
-      this.isIndexedDBSupported = typeof indexedDB !== 'undefined';
+      this.isChromeStorage = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
       this.initPromise = this.init();
     }
 
     async init() {
-      if (!this.isIndexedDBSupported) {
-        return;
-      }
-
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-        request.onupgradeneeded = (event) => {
-          const db = event.target.result;
-          if (!db.objectStoreNames.contains(STORE_SITEMAPS)) {
-            db.createObjectStore(STORE_SITEMAPS, { keyPath: '_id' });
-          }
-          if (!db.objectStoreNames.contains(STORE_DATA)) {
-            db.createObjectStore(STORE_DATA, { keyPath: 'sitemapId' });
-          }
-        };
-
-        request.onsuccess = async (event) => {
-          this.db = event.target.result;
-          // Seed samples if sitemaps empty
-          const existing = await this.getAllSitemaps();
-          if (existing.length === 0) {
+      // If running inside Chrome extension, seed default sitemaps if empty
+      if (this.isChromeStorage) {
+        try {
+          const sitemaps = await this.getAllSitemaps();
+          if (sitemaps.length === 0) {
             for (const s of SAMPLE_SITEMAPS) {
               await this.saveSitemap(s);
             }
           }
-          resolve(this.db);
-        };
+        } catch (e) {
+          console.warn('Chrome storage init warning:', e);
+        }
+        return;
+      }
 
-        request.onerror = (event) => {
-          console.warn('IndexedDB failed to open, falling back to storage:', event.target.error);
-          resolve(null);
-        };
-      });
+      // IndexedDB initialization for web standalone
+      if (typeof indexedDB !== 'undefined') {
+        return new Promise((resolve) => {
+          try {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+            request.onupgradeneeded = (event) => {
+              const db = event.target.result;
+              if (!db.objectStoreNames.contains(STORE_SITEMAPS)) {
+                db.createObjectStore(STORE_SITEMAPS, { keyPath: '_id' });
+              }
+              if (!db.objectStoreNames.contains(STORE_DATA)) {
+                db.createObjectStore(STORE_DATA, { keyPath: 'sitemapId' });
+              }
+            };
+
+            request.onsuccess = async (event) => {
+              this.db = event.target.result;
+              try {
+                const existing = await this.getAllSitemaps();
+                if (existing.length === 0) {
+                  for (const s of SAMPLE_SITEMAPS) {
+                    await this.saveSitemap(s);
+                  }
+                }
+              } catch (e) {}
+              resolve(this.db);
+            };
+
+            request.onerror = () => resolve(null);
+          } catch (e) {
+            resolve(null);
+          }
+        });
+      }
     }
 
     async saveSitemap(sitemap) {
       await this.initPromise;
-      const data = typeof sitemap.toJSON === 'function' ? sitemap.toJSON() : sitemap;
+      const data = typeof sitemap.toJSON === 'function' ? sitemap.toJSON() : Object.assign({}, sitemap);
       if (!data._id) throw new Error('Sitemap must have an _id property.');
 
+      data.name = data.name || data._id;
       data.updatedAt = new Date().toISOString();
 
-      if (this.db) {
-        return new Promise((resolve, reject) => {
-          const tx = this.db.transaction([STORE_SITEMAPS], 'readwrite');
-          const store = tx.objectStore(STORE_SITEMAPS);
-          const req = store.put(data);
-          req.onsuccess = () => resolve(data);
-          req.onerror = () => reject(req.error);
+      // 1. chrome.storage.local (Primary for extension)
+      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          const key = `sitemap_${data._id}`;
+          chrome.storage.local.set({ [key]: data }, () => {
+            if (chrome.runtime.lastError) {
+              console.warn('chrome.storage error:', chrome.runtime.lastError);
+            }
+            resolve(data);
+          });
         });
       }
 
-      // chrome.storage fallback
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const key = `sitemap_${data._id}`;
-        await chrome.storage.local.set({ [key]: data });
-        return data;
+      // 2. IndexedDB (Primary for web standalone)
+      if (this.db) {
+        return new Promise((resolve, reject) => {
+          try {
+            const tx = this.db.transaction([STORE_SITEMAPS], 'readwrite');
+            const store = tx.objectStore(STORE_SITEMAPS);
+            const req = store.put(data);
+            req.onsuccess = () => resolve(data);
+            req.onerror = () => reject(req.error);
+          } catch (e) {
+            reject(e);
+          }
+        });
       }
 
-      // localStorage fallback
+      // 3. localStorage fallback
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(`ws_sitemap_${data._id}`, JSON.stringify(data));
       }
@@ -180,19 +210,31 @@
 
     async getSitemap(sitemapId) {
       await this.initPromise;
-      if (this.db) {
-        return new Promise((resolve, reject) => {
-          const tx = this.db.transaction([STORE_SITEMAPS], 'readonly');
-          const store = tx.objectStore(STORE_SITEMAPS);
-          const req = store.get(sitemapId);
-          req.onsuccess = () => resolve(req.result || null);
-          req.onerror = () => reject(req.error);
+
+      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.get(`sitemap_${sitemapId}`, (res) => {
+            if (chrome.runtime.lastError) {
+              resolve(null);
+              return;
+            }
+            resolve(res[`sitemap_${sitemapId}`] || null);
+          });
         });
       }
 
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const res = await chrome.storage.local.get(`sitemap_${sitemapId}`);
-        return res[`sitemap_${sitemapId}`] || null;
+      if (this.db) {
+        return new Promise((resolve) => {
+          try {
+            const tx = this.db.transaction([STORE_SITEMAPS], 'readonly');
+            const store = tx.objectStore(STORE_SITEMAPS);
+            const req = store.get(sitemapId);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+          } catch (e) {
+            resolve(null);
+          }
+        });
       }
 
       if (typeof localStorage !== 'undefined') {
@@ -204,25 +246,37 @@
 
     async getAllSitemaps() {
       await this.initPromise;
-      if (this.db) {
-        return new Promise((resolve, reject) => {
-          const tx = this.db.transaction([STORE_SITEMAPS], 'readonly');
-          const store = tx.objectStore(STORE_SITEMAPS);
-          const req = store.getAll();
-          req.onsuccess = () => resolve(req.result || []);
-          req.onerror = () => reject(req.error);
+
+      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.get(null, (all) => {
+            if (chrome.runtime.lastError || !all) {
+              resolve([]);
+              return;
+            }
+            const sitemaps = [];
+            for (const k of Object.keys(all)) {
+              if (k.startsWith('sitemap_')) {
+                sitemaps.push(all[k]);
+              }
+            }
+            resolve(sitemaps);
+          });
         });
       }
 
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const all = await chrome.storage.local.get(null);
-        const sitemaps = [];
-        for (const k of Object.keys(all)) {
-          if (k.startsWith('sitemap_')) {
-            sitemaps.push(all[k]);
+      if (this.db) {
+        return new Promise((resolve) => {
+          try {
+            const tx = this.db.transaction([STORE_SITEMAPS], 'readonly');
+            const store = tx.objectStore(STORE_SITEMAPS);
+            const req = store.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([]);
+          } catch (e) {
+            resolve([]);
           }
-        }
-        return sitemaps;
+        });
       }
 
       const list = [];
@@ -241,19 +295,28 @@
 
     async deleteSitemap(sitemapId) {
       await this.initPromise;
-      if (this.db) {
-        await new Promise((resolve, reject) => {
-          const tx = this.db.transaction([STORE_SITEMAPS, STORE_DATA], 'readwrite');
-          tx.objectStore(STORE_SITEMAPS).delete(sitemapId);
-          tx.objectStore(STORE_DATA).delete(sitemapId);
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
+
+      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.remove([`sitemap_${sitemapId}`, `data_${sitemapId}`], () => {
+            if (chrome.runtime.lastError) {}
+            resolve(true);
+          });
         });
-        return true;
       }
 
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await chrome.storage.local.remove([`sitemap_${sitemapId}`, `data_${sitemapId}`]);
+      if (this.db) {
+        await new Promise((resolve) => {
+          try {
+            const tx = this.db.transaction([STORE_SITEMAPS, STORE_DATA], 'readwrite');
+            tx.objectStore(STORE_SITEMAPS).delete(sitemapId);
+            tx.objectStore(STORE_DATA).delete(sitemapId);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+          } catch (e) {
+            resolve();
+          }
+        });
         return true;
       }
 
@@ -273,48 +336,66 @@
         records: records
       };
 
-      if (this.db) {
-        return new Promise((resolve, reject) => {
-          const tx = this.db.transaction([STORE_DATA], 'readwrite');
-          const req = tx.objectStore(STORE_DATA).put(entry);
-          req.onsuccess = () => resolve(entry);
-          req.onerror = () => reject(req.error);
+      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.set({ [`data_${sitemapId}`]: entry }, () => {
+            if (chrome.runtime.lastError) {}
+            resolve(entry);
+          });
         });
       }
 
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await chrome.storage.local.set({ [`data_${sitemapId}`]: entry });
-        return entry;
+      if (this.db) {
+        return new Promise((resolve) => {
+          try {
+            const tx = this.db.transaction([STORE_DATA], 'readwrite');
+            const req = tx.objectStore(STORE_DATA).put(entry);
+            req.onsuccess = () => resolve(entry);
+            req.onerror = () => resolve(entry);
+          } catch (e) {
+            resolve(entry);
+          }
+        });
       }
 
       if (typeof localStorage !== 'undefined') {
         try {
           localStorage.setItem(`ws_data_${sitemapId}`, JSON.stringify(entry));
-        } catch (e) {
-          console.warn('LocalStorage quota exceeded for scraped data');
-        }
+        } catch (e) {}
       }
       return entry;
     }
 
     async getScrapedData(sitemapId) {
       await this.initPromise;
-      if (this.db) {
-        return new Promise((resolve, reject) => {
-          const tx = this.db.transaction([STORE_DATA], 'readonly');
-          const req = tx.objectStore(STORE_DATA).get(sitemapId);
-          req.onsuccess = () => {
-            const res = req.result;
-            resolve(res ? res.records : []);
-          };
-          req.onerror = () => reject(req.error);
+
+      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.get(`data_${sitemapId}`, (res) => {
+            if (chrome.runtime.lastError || !res) {
+              resolve([]);
+              return;
+            }
+            const entry = res[`data_${sitemapId}`];
+            resolve(entry ? entry.records : []);
+          });
         });
       }
 
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const res = await chrome.storage.local.get(`data_${sitemapId}`);
-        const entry = res[`data_${sitemapId}`];
-        return entry ? entry.records : [];
+      if (this.db) {
+        return new Promise((resolve) => {
+          try {
+            const tx = this.db.transaction([STORE_DATA], 'readonly');
+            const req = tx.objectStore(STORE_DATA).get(sitemapId);
+            req.onsuccess = () => {
+              const res = req.result;
+              resolve(res ? res.records : []);
+            };
+            req.onerror = () => resolve([]);
+          } catch (e) {
+            resolve([]);
+          }
+        });
       }
 
       if (typeof localStorage !== 'undefined') {
@@ -331,18 +412,27 @@
 
     async clearScrapedData(sitemapId) {
       await this.initPromise;
-      if (this.db) {
-        return new Promise((resolve, reject) => {
-          const tx = this.db.transaction([STORE_DATA], 'readwrite');
-          const req = tx.objectStore(STORE_DATA).delete(sitemapId);
-          req.onsuccess = () => resolve(true);
-          req.onerror = () => reject(req.error);
+
+      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.remove(`data_${sitemapId}`, () => {
+            if (chrome.runtime.lastError) {}
+            resolve(true);
+          });
         });
       }
 
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await chrome.storage.local.remove(`data_${sitemapId}`);
-        return true;
+      if (this.db) {
+        return new Promise((resolve) => {
+          try {
+            const tx = this.db.transaction([STORE_DATA], 'readwrite');
+            const req = tx.objectStore(STORE_DATA).delete(sitemapId);
+            req.onsuccess = () => resolve(true);
+            req.onerror = () => resolve(true);
+          } catch (e) {
+            resolve(true);
+          }
+        });
       }
 
       if (typeof localStorage !== 'undefined') {

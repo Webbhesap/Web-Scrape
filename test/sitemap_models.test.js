@@ -74,3 +74,17 @@ test('Sitemap Model - Lifecycle & Selector hierarchy', () => {
   assert.equal(sitemap.selectors.length, 1);
   assert.deepEqual(sitemap.selectors[0].parentSelectors, ['_root']); // cleaned up to _root
 });
+
+test('Sitemap Model - Auto Slugification & URL Normalization', () => {
+  const sitemap = new Sitemap({
+    _id: 'My Special E-Commerce Store 2026!',
+    startUrl: ['example.com/items', 'http://store.org']
+  });
+
+  assert.equal(sitemap._id, 'my_special_e-commerce_store_2026');
+  assert.equal(sitemap.name, 'My Special E-Commerce Store 2026!');
+  assert.deepEqual(sitemap.startUrl, ['https://example.com/items', 'http://store.org']);
+
+  const valid = sitemap.validate();
+  assert.ok(valid.isValid);
+});

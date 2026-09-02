@@ -16,16 +16,39 @@
 
   const Selector = SelectorModule.Selector;
 
+  function slugifyId(str) {
+    if (!str) return '';
+    return String(str)
+      .trim()
+      .toLowerCase()
+      .replace(/[\s\t\r\n]+/g, '_')
+      .replace(/[^a-z0-9_\-]/g, '_')
+      .replace(/_{2,}/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  function normalizeUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    let trimmed = url.trim();
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://') && !trimmed.startsWith('file://')) {
+      trimmed = 'https://' + trimmed;
+    }
+    return trimmed;
+  }
+
   class Sitemap {
     constructor(data = {}) {
-      this._id = String(data._id || data.id || '').trim();
-      this.name = String(data.name || this._id || '').trim();
+      const rawId = String(data._id || data.id || '').trim();
+      this._id = slugifyId(rawId) || rawId;
+      this.name = String(data.name || rawId || this._id || '').trim();
       
       let startUrls = data.startUrl || data.startUrls || [];
       if (typeof startUrls === 'string') {
         startUrls = [startUrls];
       }
-      this.startUrl = Array.isArray(startUrls) ? startUrls.map(u => String(u).trim()).filter(Boolean) : [];
+      this.startUrl = Array.isArray(startUrls) 
+        ? startUrls.map(u => normalizeUrl(String(u))).filter(Boolean) 
+        : [];
       
       this.selectors = [];
       if (Array.isArray(data.selectors)) {
@@ -45,9 +68,7 @@
     validate() {
       const errors = [];
       if (!this._id) {
-        errors.push('Sitemap ID is required.');
-      } else if (!/^[a-zA-Z0-9_\-]+$/.test(this._id)) {
-        errors.push('Sitemap ID must contain only letters, numbers, hyphens, and underscores.');
+        errors.push('Sitemap name/ID is required.');
       }
 
       if (!this.startUrl || this.startUrl.length === 0) {
@@ -129,6 +150,7 @@
     toJSON() {
       return {
         _id: this._id,
+        name: this.name,
         startUrl: this.startUrl,
         selectors: this.selectors.map(s => s.toJSON())
       };
@@ -139,6 +161,10 @@
         json = JSON.parse(json);
       }
       return new Sitemap(json);
+    }
+
+    static slugify(str) {
+      return slugifyId(str);
     }
   }
 

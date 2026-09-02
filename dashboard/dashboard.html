@@ -188,11 +188,12 @@
           </div>
         </div>
         <div class="card-body">
-          <form id="form-selector-edit">
+          <div id="selector-edit-error" style="display:none; background:rgba(244,63,94,0.15); border:1px solid #f43f5e; color:#fecdd3; padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:12px;"></div>
+          <form id="form-selector-edit" novalidate>
             <div class="form-group">
               <label class="form-label" for="field-selector-id">Id <span style="color:#f43f5e;">*</span></label>
-              <input type="text" id="field-selector-id" class="form-control" placeholder="e.g. product_title, item_price, category_link" required pattern="[a-zA-Z0-9_\-]+">
-              <div class="form-help">Unique name identifier for this selector (letters, numbers, hyphens, underscores).</div>
+              <input type="text" id="field-selector-id" class="form-control" placeholder="e.g. product_title, item_price, category_link">
+              <div class="form-help">Unique name identifier for this selector.</div>
             </div>
 
             <div class="form-group">
@@ -379,16 +380,17 @@
           </div>
         </div>
         <div class="card-body">
-          <form id="form-sitemap-meta">
+          <div id="sitemap-meta-error" style="display:none; background:rgba(244,63,94,0.15); border:1px solid #f43f5e; color:#fecdd3; padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:12px;"></div>
+          <form id="form-sitemap-meta" novalidate>
             <div class="form-group">
               <label class="form-label" for="field-sitemap-id">Sitemap name <span style="color:#f43f5e;">*</span></label>
-              <input type="text" id="field-sitemap-id" class="form-control" placeholder="e.g. ecommerce_store, news_articles" required pattern="[a-zA-Z0-9_\-]+">
-              <div class="form-help">Unique name identifier (letters, numbers, hyphens, underscores).</div>
+              <input type="text" id="field-sitemap-id" class="form-control" placeholder="e.g. ecommerce_store, news_articles">
+              <div class="form-help">Name of the sitemap (letters, numbers, spaces, hyphens).</div>
             </div>
 
             <div class="form-group">
               <label class="form-label" for="field-sitemap-urls">Start URL(s) <span style="color:#f43f5e;">*</span></label>
-              <textarea id="field-sitemap-urls" class="form-control form-control-mono" placeholder="https://example.com/products&#10;https://example.com/page/[1-100]&#10;https://example.com/category/[a-z]" rows="5" required></textarea>
+              <textarea id="field-sitemap-urls" class="form-control form-control-mono" placeholder="https://example.com/products&#10;https://example.com/page/[1-100]&#10;https://example.com/category/[a-z]" rows="5"></textarea>
               <div class="form-help">Enter one URL per line. Supports ranges like <code>[1-100]</code>, zero-padded <code>[001-100]</code>, steps <code>[0-100:10]</code>, and letters <code>[a-z]</code>.</div>
             </div>
 
@@ -411,10 +413,11 @@
           </div>
         </div>
         <div class="card-body">
-          <form id="form-sitemap-import">
+          <div id="sitemap-import-error" style="display:none; background:rgba(244,63,94,0.15); border:1px solid #f43f5e; color:#fecdd3; padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:12px;"></div>
+          <form id="form-sitemap-import" novalidate>
             <div class="form-group">
               <label class="form-label" for="field-import-json">Sitemap JSON <span style="color:#f43f5e;">*</span></label>
-              <textarea id="field-import-json" class="form-control form-control-mono" placeholder='Paste Sitemap JSON here... e.g. {"_id":"mysite","startUrl":["https://..."],"selectors":[...]}' rows="10" required></textarea>
+              <textarea id="field-import-json" class="form-control form-control-mono" placeholder='Paste Sitemap JSON here... e.g. {"_id":"mysite","startUrl":["https://..."],"selectors":[...]}' rows="10"></textarea>
             </div>
 
             <div class="form-group">
