@@ -1062,7 +1062,7 @@
         elements.fieldSelectorCss.value = picked.trim();
       }
     } else {
-      alert(`Previewing selector "${selStr}". In Chrome Extension mode, elements will highlight directly on the active webpage.`);
+      alert(t('previewHint', { sel: selStr }));
     }
   }
 
@@ -1122,7 +1122,7 @@
           if (!urlText.startsWith('http://') && !urlText.startsWith('https://') && !urlText.startsWith('file://')) {
             return 'https://' + urlText;
           }
-          return t;
+          return urlText;
         });
         
         const validation = state.currentSitemap.validate();
@@ -1283,7 +1283,7 @@
     const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
 
     elements.scrapeLogBox.innerHTML = '';
-    logScrape('Starting scraper for sitemap: ' + (state.currentSitemap.name || state.currentSitemap._id), 'info');
+    logScrape(t('scrapeStarting', { name: state.currentSitemap.name || state.currentSitemap._id }), 'info');
 
     // Initialize Scraper Engine
     state.scraperEngine = new ScraperEngine(state.currentSitemap, {
@@ -1300,7 +1300,7 @@
 
     state.scraperEngine.on('pageStart', (data) => {
       elements.scrapeCurrentUrl.textContent = data.url;
-      logScrape(`Visiting [Queue: ${data.queueLength}]: ${data.url}`, 'info');
+      logScrape(t('scrapeVisiting', { n: data.queueLength, url: data.url }), 'info');
     });
 
     state.scraperEngine.on('recordScraped', () => {
@@ -1308,11 +1308,11 @@
     });
 
     state.scraperEngine.on('error', (err) => {
-      logScrape(`Error: ${err.error || err.message || err}`, 'error');
+      logScrape(t('scrapeError', { msg: err.error || err.message || err }), 'error');
     });
 
     state.scraperEngine.on('finish', async (summary) => {
-      logScrape(`Scrape finished! Total records: ${summary.totalRecords}, Pages: ${summary.pagesVisited}, Time: ${(summary.elapsedMs/1000).toFixed(1)}s`, 'success');
+      logScrape(t('scrapeFinished', { records: summary.totalRecords, pages: summary.pagesVisited, time: (summary.elapsedMs / 1000).toFixed(1) }), 'success');
       await AppStorage.saveScrapedData(state.currentSitemap._id, summary.results);
       openBrowseData();
     });
@@ -1576,48 +1576,75 @@
     if (btnNext) btnNext.addEventListener('click', () => stepSlideshow(1));
     const btnPlay = document.getElementById('btn-slide-play');
     if (btnPlay) btnPlay.addEventListener('click', toggleSlideshowAutoplay);
-    const btnZipSlide = document.getElementById('btn-slide-zip');
-    if (btnZipSlide) btnZipSlide.addEventListener('click', () => downloadGalleryZip(false));
+    const btnDownloadSlide = document.getElementById('btn-slide-download');
+    if (btnDownloadSlide) btnDownloadSlide.addEventListener('click', () => downloadCurrentSlide());
     const btnZipAll = document.getElementById('btn-gallery-zip-all');
     if (btnZipAll) btnZipAll.addEventListener('click', () => downloadGalleryZip(false));
     const btnZipSel = document.getElementById('btn-gallery-zip-selected');
     if (btnZipSel) btnZipSel.addEventListener('click', () => downloadGalleryZip(true));
+
+    // Auto-hiding slideshow chrome. The cursor is hidden together with the
+    // controls (via the `idle` class) so nothing floats over the image.
     let chromeHideTimer = null;
     function pulseSlideshowChrome() {
-      const chrome = document.getElementById('slideshow-chrome');
-      if (!chrome) return;
-      chrome.classList.add('show');
+      const chromeEl = document.getElementById('slideshow-chrome');
+      const overlay = document.getElementById('slideshow-overlay');
+      if (!chromeEl) return;
+      chromeEl.classList.add('show');
+      if (overlay) overlay.classList.remove('idle');
       clearTimeout(chromeHideTimer);
       chromeHideTimer = setTimeout(() => {
-        if (chrome.matches(':hover')) {
+        // Keep the bar up while the pointer rests on an actual control.
+        if (typeof chromeEl.matches === 'function' && chromeEl.matches(':hover')) {
           pulseSlideshowChrome();
           return;
         }
-        chrome.classList.remove('show');
+        chromeEl.classList.remove('show');
+        if (overlay) overlay.classList.add('idle');
       }, 2000);
     }
+    function cancelSlideshowChromeTimer() {
+      clearTimeout(chromeHideTimer);
+      chromeHideTimer = null;
+    }
     window.__wsPulseSlideshowChrome = pulseSlideshowChrome;
+    window.__wsCancelSlideshowChrome = cancelSlideshowChromeTimer;
+
     const overlayEl = document.getElementById('slideshow-overlay');
     if (overlayEl) {
-      overlayEl.addEventListener('mousemove', pulseSlideshowChrome);
+      // Only a real pointer move should wake the chrome back up; hiding the
+      // cursor itself must not be able to re-trigger this handler.
+      let lastX = null;
+      let lastY = null;
+      overlayEl.addEventListener('mousemove', (e) => {
+        if (e.clientX === lastX && e.clientY === lastY) return;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        pulseSlideshowChrome();
+      });
+
+      // Mouse wheel navigates between images.
+      overlayEl.addEventListener('wheel', (e) => {
+        if (!overlayEl.classList.contains('open')) return;
+        e.preventDefault();
+        const delta = e.deltaY || e.deltaX || 0;
+        if (!delta) return;
+        const now = Date.now();
+        // Trackpads emit long inertial streams — throttle to one step.
+        if (now - lastWheelAt < 120) return;
+        lastWheelAt = now;
+        stepSlideshow(delta > 0 ? 1 : -1);
+        pulseSlideshowChrome();
+      }, { passive: false });
     }
-    const intervalInput = document.getElementById('slideshow-interval');
-    const bump = (d) => {
-      if (!intervalInput) return;
-      const n = Math.min(60, Math.max(1, (parseInt(intervalInput.value, 10) || 4) + d));
-      intervalInput.value = n;
-    };
-    const down = document.getElementById('btn-interval-down');
-    const up = document.getElementById('btn-interval-up');
-    if (down) down.addEventListener('click', () => bump(-1));
-    if (up) up.addEventListener('click', () => bump(1));
+
     document.addEventListener('keydown', (e) => {
       const overlay = document.getElementById('slideshow-overlay');
-      if (!overlay || overlay.hasAttribute('hidden')) return;
+      if (!overlay || !overlay.classList.contains('open')) return;
       if (e.key === 'Escape') closeSlideshow();
-      if (e.key === 'ArrowRight') stepSlideshow(1);
-      if (e.key === 'ArrowLeft') stepSlideshow(-1);
-      if (e.key === ' ') { e.preventDefault(); toggleSlideshowAutoplay(); }
+      if (e.key === 'ArrowRight') { stepSlideshow(1); pulseSlideshowChrome(); }
+      if (e.key === 'ArrowLeft') { stepSlideshow(-1); pulseSlideshowChrome(); }
+      if (e.key === ' ') { e.preventDefault(); toggleSlideshowAutoplay(); pulseSlideshowChrome(); }
     });
 
     document.getElementById('btn-export-csv-direct').addEventListener('click', () => {
@@ -1926,6 +1953,7 @@
   let slideIndex = 0;
   let slideTimer = null;
   let slidePlaying = false;
+  let lastWheelAt = 0;
 
   function openSlideshow(index) {
     if (!state.galleryItems.length) renderGallery();
@@ -1936,6 +1964,7 @@
     if (!overlay) return;
     overlay.hidden = false;
     overlay.classList.add('open');
+    overlay.classList.remove('idle');
     if (window.__wsPulseSlideshowChrome) window.__wsPulseSlideshowChrome();
     const play = document.getElementById('btn-slide-play');
     if (play) play.textContent = '▶';
@@ -1953,6 +1982,8 @@
     void img.offsetWidth;
     img.src = item.url;
     if (trSel !== 'none') img.classList.add('tr-' + trSel);
+    const counter = document.getElementById('slideshow-counter');
+    if (counter) counter.textContent = (slideIndex + 1) + ' / ' + items.length;
   }
 
   function stepSlideshow(dir) {
@@ -1972,7 +2003,13 @@
   function toggleSlideshowAutoplay() {
     slidePlaying = !slidePlaying;
     const play = document.getElementById('btn-slide-play');
-    if (play) play.textContent = slidePlaying ? '❚❚' : '▶';
+    if (play) {
+      play.textContent = slidePlaying ? '❚❚' : '▶';
+      const label = t(slidePlaying ? 'pauseSlide' : 'play');
+      play.setAttribute('title', label);
+      play.setAttribute('aria-label', label);
+      play.setAttribute('data-i18n-title', slidePlaying ? 'pauseSlide' : 'play');
+    }
     restartSlideTimer();
   }
 
@@ -1981,9 +2018,72 @@
     if (overlay) {
       overlay.hidden = true;
       overlay.classList.remove('open');
+      overlay.classList.remove('idle');
     }
+    const chromeEl = document.getElementById('slideshow-chrome');
+    if (chromeEl) chromeEl.classList.remove('show');
+    if (window.__wsCancelSlideshowChrome) window.__wsCancelSlideshowChrome();
     slidePlaying = false;
     if (slideTimer) clearInterval(slideTimer);
+    slideTimer = null;
+  }
+
+  /**
+   * Builds a sensible file name for a single image URL.
+   */
+  function imageFilenameFromUrl(url, index) {
+    let base = '';
+    let ext = '';
+    try {
+      const clean = String(url).split('#')[0].split('?')[0];
+      base = decodeURIComponent(clean.substring(clean.lastIndexOf('/') + 1));
+    } catch (e) {
+      base = '';
+    }
+    const dot = base.lastIndexOf('.');
+    if (dot > 0) {
+      ext = base.substring(dot + 1).toLowerCase();
+      base = base.substring(0, dot);
+    }
+    if (!/^[a-z0-9]{2,5}$/.test(ext)) ext = 'jpg';
+    base = base.replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
+    if (!base) base = 'image-' + String((index || 0) + 1).padStart(3, '0');
+    return base + '.' + ext;
+  }
+
+  /**
+   * Downloads the image currently shown in the slideshow as a plain image
+   * file (not a ZIP archive).
+   */
+  async function downloadCurrentSlide() {
+    const items = state.galleryItems || [];
+    const item = items[slideIndex];
+    if (!item || !item.url) return;
+    const filename = imageFilenameFromUrl(item.url, slideIndex);
+
+    // Fetch into a blob so the file is saved rather than opened in a tab,
+    // and so cross-origin URLs still honour the download attribute.
+    try {
+      const resp = await fetch(item.url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      triggerDownload(objectUrl, filename);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+    } catch (e) {
+      // Fallback: let the browser download straight from the source URL.
+      triggerDownload(item.url, filename);
+    }
+  }
+
+  function triggerDownload(href, filename) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async function downloadGalleryZip(selectedOnly) {

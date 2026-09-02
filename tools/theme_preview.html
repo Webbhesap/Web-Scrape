@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!--
+  Manual visual check for the themed native controls.
+  Serve the repo and open /tools/theme_preview.html to eyeball every widget
+  that the browser paints itself (select popup, number spinner, range, etc).
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Web Scraper — Theme Check</title>
+  <link rel="stylesheet" href="../dashboard/dashboard.css">
+  <style>
+    body { overflow: auto; padding: 24px; display: block; }
+    .row { display: flex; gap: 16px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+    h2 { font-size: 14px; margin: 24px 0 10px; color: var(--accent-blue); }
+    .swatch { width: 90px; height: 42px; border-radius: 6px; border: 1px solid var(--border-color); display:flex; align-items:center; justify-content:center; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <h1 style="font-size:18px;">Theme check — every control below must be dark</h1>
+
+  <h2>Palette</h2>
+  <div class="row">
+    <div class="swatch" style="background:var(--bg-main)">bg-main</div>
+    <div class="swatch" style="background:var(--bg-card)">bg-card</div>
+    <div class="swatch" style="background:var(--bg-card-header)">card-header</div>
+    <div class="swatch" style="background:var(--bg-input)">bg-input</div>
+    <div class="swatch" style="background:var(--bg-hover)">bg-hover</div>
+    <div class="swatch" style="background:var(--primary)">primary</div>
+  </div>
+
+  <h2>Select — open it, the option list must be dark</h2>
+  <div class="row">
+    <select class="form-control" style="width:220px;">
+      <option>Fade</option><option>Slide</option><option>Zoom</option><option>Cut</option>
+    </select>
+    <select class="form-control" style="width:220px;">
+      <option>Comma (,)</option><option>Semicolon (;)</option><option>Tab</option>
+    </select>
+  </div>
+
+  <h2>Number input — spinner arrows must be themed, not white</h2>
+  <div class="row">
+    <input type="number" class="form-control" value="4" min="1" max="60" style="width:120px;">
+    <input type="number" class="form-control" value="2000" min="0" step="500" style="width:140px;">
+  </div>
+
+  <h2>Text / textarea / range / checkbox</h2>
+  <div class="row">
+    <input type="text" class="form-control" placeholder="Placeholder text" style="width:220px;">
+    <input type="range" min="2" max="8" value="4">
+    <label class="form-checkbox-label"><input type="checkbox" checked> Checked</label>
+    <label class="form-checkbox-label"><input type="radio" name="r" checked> Radio</label>
+  </div>
+  <div class="row">
+    <textarea class="form-control" style="width:320px;">Textarea</textarea>
+  </div>
+
+  <h2>Slideshow toolbar (as rendered over an image)</h2>
+  <div style="position:relative; height:150px; background:#111; border-radius:8px; overflow:hidden;">
+    <div class="slideshow-chrome show" style="position:absolute; inset:0;">
+      <div class="slideshow-counter">2 / 12</div>
+      <div class="slideshow-tools">
+        <div class="slideshow-dur">
+          <input type="number" id="ss-int" min="1" max="60" value="4"><span>s</span>
+        </div>
+        <select>
+          <option>Fade</option><option>Slide</option><option>Zoom</option><option>Cut</option>
+        </select>
+        <button type="button" class="slideshow-icon">&#9654;</button>
+        <button type="button" class="slideshow-icon">&#11015;</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>Buttons</h2>
+  <div class="row">
+    <button class="btn btn-primary">Primary</button>
+    <button class="btn btn-secondary">Secondary</button>
+    <button class="btn btn-success">Success</button>
+    <button class="btn btn-danger">Danger</button>
+  </div>
+</body>
+</html>

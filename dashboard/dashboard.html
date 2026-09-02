@@ -739,24 +739,23 @@
       <img id="slideshow-image" alt="" />
     </div>
     <div class="slideshow-chrome" id="slideshow-chrome">
+      <div class="slideshow-counter" id="slideshow-counter">0 / 0</div>
       <button type="button" class="slideshow-icon slideshow-close" id="btn-slideshow-close" data-i18n-title="close" title="Close" aria-label="Close">✕</button>
       <button type="button" class="slideshow-icon slideshow-prev" id="btn-slide-prev" data-i18n-title="previousSlide" aria-label="Previous">‹</button>
       <button type="button" class="slideshow-icon slideshow-next" id="btn-slide-next" data-i18n-title="nextSlide" aria-label="Next">›</button>
       <div class="slideshow-tools">
         <div class="slideshow-dur">
-          <button type="button" class="ss-step" id="btn-interval-down" aria-label="-">−</button>
-          <input type="number" id="slideshow-interval" min="1" max="60" value="4" />
-          <button type="button" class="ss-step" id="btn-interval-up" aria-label="+">+</button>
+          <input type="number" id="slideshow-interval" min="1" max="60" value="4" data-i18n-title="intervalSeconds" />
           <span>s</span>
         </div>
-        <select id="slideshow-transition">
+        <select id="slideshow-transition" data-i18n-title="transition">
           <option value="fade" data-i18n="fade">Fade</option>
           <option value="slide" data-i18n="slide">Slide</option>
           <option value="zoom" data-i18n="zoom">Zoom</option>
           <option value="none" data-i18n="cut">Cut</option>
         </select>
         <button type="button" class="slideshow-icon" id="btn-slide-play" data-i18n-title="play" aria-label="Play">▶</button>
-        <button type="button" class="slideshow-icon" id="btn-slide-zip" title="ZIP">⬇</button>
+        <button type="button" class="slideshow-icon" id="btn-slide-download" data-i18n-title="downloadImage" aria-label="Download image">⬇</button>
       </div>
     </div>
   </div>

@@ -1,19 +1,57 @@
 /* Extension Popup Styles */
 :root {
+  /* Match the dashboard: opt into the dark UA scheme so native widgets,
+     scrollbars and form controls are dark instead of white. */
+  color-scheme: dark;
+  accent-color: #0d9488;
+
   --primary: #0d9488;
   --primary-hover: #0f766e;
   --bg-main: #0b1120;
   --bg-card: #131d31;
   --bg-input: #1c2a46;
+  --bg-hover: #223354;
   --border-color: #263859;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
+  --text-dim: #64748b;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* Dark scrollbars inside the popup */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3b5078;
+}
+
+/* Native controls follow the theme */
+input,
+select,
+textarea,
+button,
+option {
+  color-scheme: dark;
+  font-family: inherit;
+}
+
+select option {
+  background-color: var(--bg-card);
+  color: var(--text-main);
 }
 
 body {

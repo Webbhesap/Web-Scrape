@@ -51,7 +51,19 @@ Supports advanced start URL patterns:
 - **Controls**: Pause, Resume, Stop.
 - Real-time **activity log stream**.
 
-### 6. Data Viewer & Multiple Export Formats
+### 6. Image Gallery & Slideshow
+- Responsive image grid with adjustable column count, inline URL editing, and per-image delete.
+- **Fullscreen slideshow** with fade / slide / zoom / cut transitions and configurable autoplay interval.
+- **Mouse wheel** scrolls through images; arrow keys and <kbd>Space</kbd> also work, <kbd>Esc</kbd> closes.
+- Controls auto-hide after 2 seconds of inactivity — **the mouse cursor hides with them** for an unobstructed view.
+- **Download button saves the currently displayed image directly** (original filename and extension preserved), while the gallery toolbar keeps bulk **ZIP** export for all/selected images.
+
+### 7. Fully Themed Dark UI
+The interface uses a single dark palette driven by CSS custom properties, and opts into the browser's dark UA color scheme (`color-scheme: dark`) so that **browser-painted controls match the theme** instead of rendering white:
+- `<select>` popup option lists, number-input spinner arrows, range sliders, checkboxes/radios, scrollbars, focus rings and Chrome autofill are all explicitly themed.
+- The same theme is applied to the dashboard, the DevTools panel, the toolbar popup, and the in-page selector picker.
+
+### 8. Data Viewer & Multiple Export Formats
 - Interactive data table with column sorting (asc/desc), live keyword search, and pagination.
 - **Export to CSV**: RFC 4180 compliant with UTF-8 BOM for Microsoft Excel compatibility, configurable delimiters (comma `,`, semicolon `;`, tab `\t`).
 - **Export to Excel**: SpreadsheetML XML format (`.xls`) with styled headers and native column widths.
@@ -131,6 +143,9 @@ Web-Scrape/
 │   │   └── Storage.js             # IndexedDB with chrome.storage fallback
 │   └── export/
 │       └── Exporter.js            # CSV, Excel, and JSON exporter
+├── tools/
+│   ├── build_panel.js             # Generates devtools/panel.html from the dashboard
+│   └── theme_preview.html         # Manual visual check for themed native controls
 └── test/
     ├── url_expander.test.js       # Range expander unit tests
     ├── css_generator.test.js      # Smart CSS generator tests
@@ -139,7 +154,12 @@ Web-Scrape/
     ├── data_flattener.test.js     # Data flattening & record normalization tests
     ├── sitemap_models.test.js     # Sitemap & Selector models tests
     ├── csv_xlsx_export.test.js    # CSV & Excel export tests
+    ├── storage_concurrency.test.js# Storage integration & concurrency tests
     ├── ui_integration.test.js     # Full UI DOM & scripts integration test
+    ├── slideshow_ui.test.js       # Slideshow controls, wheel nav & download tests
+    ├── theme_consistency.test.js  # Dark-theme / native control styling tests
+    ├── devtools_panel.test.js     # DevTools panel parity & auto-open regression tests
+    ├── dashboard_regressions.test.js # Controller & i18n regression tests
     └── scraper_e2e.test.js        # Multi-page crawl & extraction E2E test
 ```
 
@@ -147,11 +167,20 @@ Web-Scrape/
 
 ## 🧪 Automated Testing
 
-Run the automated test suite using Node.js test runner:
+Install the dev dependency (jsdom) once, then run the suite with the Node.js test runner:
 ```bash
+npm install
 npm test
 ```
-All 34 automated unit, integration, and E2E tests will run and report results.
+All **73** automated unit, integration, UI and E2E tests will run and report results.
+
+The DevTools panel is generated from the dashboard so the two can never drift apart:
+```bash
+npm run build:panel   # regenerate devtools/panel.html
+npm run check:panel   # CI check: fails if it is out of date
+```
+
+> `devtools/panel.html` is auto-generated — edit `dashboard/dashboard.html` and re-run `npm run build:panel`.
 
 ---
 

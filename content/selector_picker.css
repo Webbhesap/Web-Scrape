@@ -19,6 +19,41 @@
   line-height: 1.4 !important;
 }
 
+/* The picker UI is injected into arbitrary (often light) pages. Force the dark
+   UA scheme on our own widgets so native parts stay on-theme, without
+   affecting the host page. */
+#ws-picker-container,
+#ws-floating-toolbar,
+#ws-data-preview-modal,
+#ws-floating-toolbar input,
+#ws-floating-toolbar select,
+#ws-floating-toolbar button,
+#ws-data-preview-modal input,
+#ws-data-preview-modal select,
+#ws-data-preview-modal button {
+  color-scheme: dark !important;
+  accent-color: var(--ws-primary) !important;
+}
+
+#ws-floating-toolbar select option,
+#ws-data-preview-modal select option {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+/* Dark scrollbars inside the picker's own panels */
+#ws-data-preview-modal ::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+#ws-data-preview-modal ::-webkit-scrollbar-track {
+  background: #0f172a !important;
+}
+#ws-data-preview-modal ::-webkit-scrollbar-thumb {
+  background: #334155 !important;
+  border-radius: 4px !important;
+}
+
 /* Hover highlighter overlay */
 .ws-hover-highlight {
   outline: 2px solid var(--ws-hover-outline) !important;

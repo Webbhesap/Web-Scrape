@@ -1,6 +1,13 @@
 /* Modern Web Scraper UI Stylesheet */
 
 :root {
+  /* Force the dark UA color scheme everywhere. This is what makes native
+     widgets (number spinners, <select> popup lists, scrollbars, date pickers,
+     autofill) render dark instead of the default white. */
+  color-scheme: dark;
+  /* Tints native checkboxes, radios and range sliders with the brand color. */
+  accent-color: #0d9488;
+
   --primary: #0d9488;
   --primary-hover: #0f766e;
   --primary-light: #ccfbf1;
@@ -11,8 +18,15 @@
   --bg-card-header: #17233d;
   --bg-input: #1c2a46;
   --bg-hover: #223354;
-  
+  --bg-overlay: #060911;
+
+  /* Translucent surfaces (used by floating chrome such as the slideshow bar) */
+  --bg-card-alpha: rgba(19, 29, 49, 0.78);
+  --bg-input-alpha: rgba(28, 42, 70, 0.85);
+  --bg-hover-alpha: rgba(34, 51, 84, 0.92);
+
   --border-color: #263859;
+  --border-strong: #3b5078;
   --border-focus: #14b8a6;
   
   --text-main: #f8fafc;
@@ -33,6 +47,19 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* Every element inherits the dark UA scheme, including replaced/native widgets
+   rendered inside iframes such as the DevTools panel. */
+html,
+body,
+input,
+select,
+textarea,
+button,
+option,
+optgroup {
+  color-scheme: dark;
 }
 
 html {
@@ -381,6 +408,151 @@ body {
   box-shadow: 0 0 0 2px var(--primary-glow);
 }
 
+.form-control::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------
+   Native control theming
+   The browser paints <select> popups, number spinners and pickers
+   itself. `color-scheme: dark` (set on :root) plus explicit colors
+   below keep every one of them on-theme instead of default white.
+   --------------------------------------------------------------- */
+
+/* Select: custom chevron + dark popup list */
+select,
+select.form-control {
+  color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: var(--bg-input);
+  color: var(--text-main);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px 14px;
+  padding-right: 30px;
+  cursor: pointer;
+}
+
+select:hover,
+select.form-control:hover {
+  border-color: var(--border-strong);
+}
+
+/* The opened option list. Chrome paints these with the element colors. */
+select option,
+select optgroup,
+datalist option {
+  background-color: var(--bg-card);
+  color: var(--text-main);
+}
+
+select option:checked,
+select option:hover,
+select option:focus {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+}
+
+select option:disabled {
+  color: var(--text-dim);
+}
+
+/* Number inputs: theme the spinner arrows instead of the white default.
+   The UA spinner cannot be recolored directly, so it is replaced by a custom
+   stepper drawn with a background image that matches the palette.
+   NOTE: `appearance: textfield` is deliberately NOT used here — in Chrome it
+   removes the spin buttons entirely, and we want them visible but themed. */
+input[type="number"] {
+  color-scheme: dark;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  width: 18px;
+  align-self: stretch;
+  border-left: 1px solid var(--border-color);
+  border-radius: 0 5px 5px 0;
+  opacity: 1;
+  cursor: pointer;
+  background-color: var(--bg-hover);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 11px 22px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='22' viewBox='0 0 11 22' fill='none' stroke='%2394a3b8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 8 5.5 5l3 3'/%3E%3Cpath d='M2.5 14l3 3 3-3'/%3E%3C/svg%3E");
+}
+
+input[type="number"]:hover::-webkit-outer-spin-button,
+input[type="number"]:hover::-webkit-inner-spin-button,
+input[type="number"]:focus::-webkit-outer-spin-button,
+input[type="number"]:focus::-webkit-inner-spin-button {
+  background-color: var(--bg-input);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='22' viewBox='0 0 11 22' fill='none' stroke='%232dd4bf' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 8 5.5 5l3 3'/%3E%3Cpath d='M2.5 14l3 3 3-3'/%3E%3C/svg%3E");
+}
+
+/* Checkboxes / radios */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* Range sliders (gallery column count) */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-card);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--bg-card);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+}
+
+/* Autofill: Chrome's yellow/white fill overrides the dark input background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text-main);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-input) inset;
+  caret-color: var(--text-main);
+}
+
 .form-control-mono {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -698,13 +870,22 @@ tr.selector-row.drop-after td {
   position: fixed;
   inset: 0;
   z-index: 5000;
-  background: #000;
+  background: var(--bg-overlay);
 }
-.slideshow-overlay.open,
-.slideshow-overlay:not([hidden]) {
+/* Only `.open` controls visibility. Relying on :not([hidden]) meant the
+   overlay showed itself whenever the attribute was missing (e.g. in the
+   DevTools panel markup), which opened the slideshow on panel load. */
+.slideshow-overlay.open {
   display: block;
 }
 .slideshow-overlay[hidden] { display: none !important; }
+
+/* When the chrome auto-hides, hide the mouse cursor along with it so the
+   image is shown completely unobstructed. */
+.slideshow-overlay.idle,
+.slideshow-overlay.idle * {
+  cursor: none;
+}
 .slideshow-stage {
   position: absolute;
   inset: 0;
@@ -739,19 +920,54 @@ tr.selector-row.drop-after td {
 .slideshow-icon {
   pointer-events: auto;
   position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 44px;
   height: 44px;
-  border: 0;
+  border: 1px solid var(--border-color);
   border-radius: 50%;
-  background: rgba(0,0,0,0.45);
-  color: #fff;
+  background: var(--bg-card-alpha);
+  color: var(--text-main);
   font-size: 22px;
+  line-height: 1;
   cursor: pointer;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
+.slideshow-icon:hover {
+  background: var(--bg-hover-alpha);
+  border-color: var(--border-strong);
+  color: #fff;
+}
+.slideshow-icon:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--primary-glow);
+}
+.slideshow-icon svg { width: 18px; height: 18px; }
 .slideshow-close { top: 16px; right: 16px; font-size: 18px; }
 .slideshow-prev { top: 50%; left: 16px; transform: translateY(-50%); }
 .slideshow-next { top: 50%; right: 16px; transform: translateY(-50%); }
+
+/* Slide counter pill (top-left) */
+.slideshow-counter {
+  pointer-events: none;
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-card-alpha);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
 .slideshow-tools {
   pointer-events: auto;
   position: absolute;
@@ -763,18 +979,48 @@ tr.selector-row.drop-after td {
   gap: 8px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(0,0,0,0.45);
-  backdrop-filter: blur(8px);
+  background: var(--bg-card-alpha);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 .slideshow-tools .slideshow-icon { position: static; transform: none; width: 36px; height: 36px; font-size: 14px; }
-.slideshow-dur { display: flex; align-items: center; gap: 4px; color: #fff; font-size: 12px; }
-.slideshow-dur input, .slideshow-tools select {
-  background: rgba(255,255,255,0.12);
-  border: 0;
-  color: #fff;
+.slideshow-dur {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.slideshow-dur input,
+.slideshow-tools select {
+  /* background-color (not the `background` shorthand) so the chevron image
+     declared on the global select rule is preserved. */
+  background-color: var(--bg-input-alpha);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
   border-radius: 6px;
-  padding: 4px 6px;
-  width: 56px;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-family: var(--font-family);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.slideshow-dur input { width: 62px; }
+.slideshow-tools select {
+  /* keep room for the chevron drawn by the global select rule */
+  padding-right: 26px;
+  background-position: right 6px center;
+}
+.slideshow-dur input:hover,
+.slideshow-tools select:hover {
+  border-color: var(--border-strong);
+}
+.slideshow-dur input:focus,
+.slideshow-tools select:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--primary-glow);
 }
 .gallery-card.selected { outline: 2px solid var(--primary); }
 .gallery-select {

@@ -4,7 +4,9 @@
   "description": "Free Web Scraping Chrome Extension built with pure HTML, CSS, and Vanilla JavaScript.",
   "main": "background.js",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "build:panel": "node tools/build_panel.js",
+    "check:panel": "node tools/build_panel.js --check"
   },
   "keywords": [
     "web-scraper",
