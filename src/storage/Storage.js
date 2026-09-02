@@ -108,27 +108,25 @@
   class AppStorage {
     constructor() {
       this.db = null;
-      this.isChromeStorage = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
+      this.isChromeStorage = typeof chrome !== 'undefined' && Boolean(chrome.storage && chrome.storage.local);
       this.initPromise = this.init();
     }
 
     async init() {
-      // If running inside Chrome extension, seed default sitemaps if empty
       if (this.isChromeStorage) {
         try {
-          const sitemaps = await this.getAllSitemaps();
+          const sitemaps = await this._rawGetAllSitemapsChrome();
           if (sitemaps.length === 0) {
             for (const s of SAMPLE_SITEMAPS) {
-              await this.saveSitemap(s);
+              await this._rawSaveSitemapChrome(s);
             }
           }
         } catch (e) {
           console.warn('Chrome storage init warning:', e);
         }
-        return;
+        return true;
       }
 
-      // IndexedDB initialization for web standalone
       if (typeof indexedDB !== 'undefined') {
         return new Promise((resolve) => {
           try {
@@ -147,10 +145,10 @@
             request.onsuccess = async (event) => {
               this.db = event.target.result;
               try {
-                const existing = await this.getAllSitemaps();
+                const existing = await this._rawGetAllSitemapsIDB();
                 if (existing.length === 0) {
                   for (const s of SAMPLE_SITEMAPS) {
-                    await this.saveSitemap(s);
+                    await this._rawSaveSitemapIDB(s);
                   }
                 }
               } catch (e) {}
@@ -163,7 +161,139 @@
           }
         });
       }
+
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const list = this._rawGetAllSitemapsLocalStorage();
+          if (list.length === 0) {
+            for (const s of SAMPLE_SITEMAPS) {
+              this._rawSaveSitemapLocalStorage(s);
+            }
+          }
+        } catch (e) {}
+      }
+      return true;
     }
+
+    // --- RAW INTERNAL STORAGE HELPERS (NO PROMISE AWAIT CYCLE) ---
+
+    _rawGetAllSitemapsChrome() {
+      return new Promise((resolve) => {
+        try {
+          chrome.storage.local.get(null, (all) => {
+            if ((chrome.runtime && chrome.runtime.lastError) || !all) {
+              resolve([]);
+              return;
+            }
+            const sitemaps = [];
+            for (const k of Object.keys(all)) {
+              if (k.startsWith('sitemap_')) {
+                sitemaps.push(all[k]);
+              }
+            }
+            resolve(sitemaps);
+          });
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    }
+
+    _rawSaveSitemapChrome(sitemap) {
+      return new Promise((resolve) => {
+        try {
+          const data = typeof sitemap.toJSON === 'function' ? sitemap.toJSON() : Object.assign({}, sitemap);
+          if (!data._id) {
+            resolve(null);
+            return;
+          }
+          data.name = data.name || data._id;
+          data.updatedAt = data.updatedAt || new Date().toISOString();
+          const key = `sitemap_${data._id}`;
+          chrome.storage.local.set({ [key]: data }, () => {
+            if (chrome.runtime && chrome.runtime.lastError) {
+              console.warn('chrome.storage save warning:', chrome.runtime.lastError.message);
+            }
+            resolve(data);
+          });
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }
+
+    _rawGetAllSitemapsIDB() {
+      return new Promise((resolve) => {
+        if (!this.db) {
+          resolve([]);
+          return;
+        }
+        try {
+          const tx = this.db.transaction([STORE_SITEMAPS], 'readonly');
+          const store = tx.objectStore(STORE_SITEMAPS);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    }
+
+    _rawSaveSitemapIDB(sitemap) {
+      return new Promise((resolve) => {
+        if (!this.db) {
+          resolve(null);
+          return;
+        }
+        try {
+          const data = typeof sitemap.toJSON === 'function' ? sitemap.toJSON() : Object.assign({}, sitemap);
+          if (!data._id) {
+            resolve(null);
+            return;
+          }
+          data.name = data.name || data._id;
+          data.updatedAt = data.updatedAt || new Date().toISOString();
+          const tx = this.db.transaction([STORE_SITEMAPS], 'readwrite');
+          const store = tx.objectStore(STORE_SITEMAPS);
+          const req = store.put(data);
+          req.onsuccess = () => resolve(data);
+          req.onerror = () => resolve(data);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }
+
+    _rawGetAllSitemapsLocalStorage() {
+      const list = [];
+      if (typeof localStorage !== 'undefined') {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('ws_sitemap_')) {
+            try {
+              list.push(JSON.parse(localStorage.getItem(key)));
+            } catch (e) {}
+          }
+        }
+      }
+      return list;
+    }
+
+    _rawSaveSitemapLocalStorage(sitemap) {
+      const data = typeof sitemap.toJSON === 'function' ? sitemap.toJSON() : Object.assign({}, sitemap);
+      if (!data._id) return null;
+      data.name = data.name || data._id;
+      data.updatedAt = data.updatedAt || new Date().toISOString();
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(`ws_sitemap_${data._id}`, JSON.stringify(data));
+        } catch (e) {}
+      }
+      return data;
+    }
+
+    // --- PUBLIC ASYNC METHODS ---
 
     async saveSitemap(sitemap) {
       await this.initPromise;
@@ -173,48 +303,25 @@
       data.name = data.name || data._id;
       data.updatedAt = new Date().toISOString();
 
-      // 1. chrome.storage.local (Primary for extension)
       if (this.isChromeStorage) {
-        return new Promise((resolve) => {
-          const key = `sitemap_${data._id}`;
-          chrome.storage.local.set({ [key]: data }, () => {
-            if (chrome.runtime.lastError) {
-              console.warn('chrome.storage error:', chrome.runtime.lastError);
-            }
-            resolve(data);
-          });
-        });
+        return this._rawSaveSitemapChrome(data);
       }
 
-      // 2. IndexedDB (Primary for web standalone)
       if (this.db) {
-        return new Promise((resolve, reject) => {
-          try {
-            const tx = this.db.transaction([STORE_SITEMAPS], 'readwrite');
-            const store = tx.objectStore(STORE_SITEMAPS);
-            const req = store.put(data);
-            req.onsuccess = () => resolve(data);
-            req.onerror = () => reject(req.error);
-          } catch (e) {
-            reject(e);
-          }
-        });
+        return this._rawSaveSitemapIDB(data);
       }
 
-      // 3. localStorage fallback
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(`ws_sitemap_${data._id}`, JSON.stringify(data));
-      }
-      return data;
+      return this._rawSaveSitemapLocalStorage(data);
     }
 
     async getSitemap(sitemapId) {
       await this.initPromise;
+      if (!sitemapId) return null;
 
       if (this.isChromeStorage) {
         return new Promise((resolve) => {
           chrome.storage.local.get(`sitemap_${sitemapId}`, (res) => {
-            if (chrome.runtime.lastError) {
+            if ((chrome.runtime && chrome.runtime.lastError) || !res) {
               resolve(null);
               return;
             }
@@ -248,58 +355,23 @@
       await this.initPromise;
 
       if (this.isChromeStorage) {
-        return new Promise((resolve) => {
-          chrome.storage.local.get(null, (all) => {
-            if (chrome.runtime.lastError || !all) {
-              resolve([]);
-              return;
-            }
-            const sitemaps = [];
-            for (const k of Object.keys(all)) {
-              if (k.startsWith('sitemap_')) {
-                sitemaps.push(all[k]);
-              }
-            }
-            resolve(sitemaps);
-          });
-        });
+        return this._rawGetAllSitemapsChrome();
       }
 
       if (this.db) {
-        return new Promise((resolve) => {
-          try {
-            const tx = this.db.transaction([STORE_SITEMAPS], 'readonly');
-            const store = tx.objectStore(STORE_SITEMAPS);
-            const req = store.getAll();
-            req.onsuccess = () => resolve(req.result || []);
-            req.onerror = () => resolve([]);
-          } catch (e) {
-            resolve([]);
-          }
-        });
+        return this._rawGetAllSitemapsIDB();
       }
 
-      const list = [];
-      if (typeof localStorage !== 'undefined') {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key.startsWith('ws_sitemap_')) {
-            try {
-              list.push(JSON.parse(localStorage.getItem(key)));
-            } catch (e) {}
-          }
-        }
-      }
-      return list;
+      return this._rawGetAllSitemapsLocalStorage();
     }
 
     async deleteSitemap(sitemapId) {
       await this.initPromise;
+      if (!sitemapId) return true;
 
       if (this.isChromeStorage) {
         return new Promise((resolve) => {
           chrome.storage.local.remove([`sitemap_${sitemapId}`, `data_${sitemapId}`], () => {
-            if (chrome.runtime.lastError) {}
             resolve(true);
           });
         });
@@ -332,14 +404,13 @@
       const entry = {
         sitemapId: sitemapId,
         scrapedAt: new Date().toISOString(),
-        count: records.length,
-        records: records
+        count: Array.isArray(records) ? records.length : 0,
+        records: Array.isArray(records) ? records : []
       };
 
       if (this.isChromeStorage) {
         return new Promise((resolve) => {
           chrome.storage.local.set({ [`data_${sitemapId}`]: entry }, () => {
-            if (chrome.runtime.lastError) {}
             resolve(entry);
           });
         });
@@ -368,11 +439,12 @@
 
     async getScrapedData(sitemapId) {
       await this.initPromise;
+      if (!sitemapId) return [];
 
       if (this.isChromeStorage) {
         return new Promise((resolve) => {
           chrome.storage.local.get(`data_${sitemapId}`, (res) => {
-            if (chrome.runtime.lastError || !res) {
+            if ((chrome.runtime && chrome.runtime.lastError) || !res) {
               resolve([]);
               return;
             }
@@ -412,11 +484,11 @@
 
     async clearScrapedData(sitemapId) {
       await this.initPromise;
+      if (!sitemapId) return true;
 
       if (this.isChromeStorage) {
         return new Promise((resolve) => {
           chrome.storage.local.remove(`data_${sitemapId}`, () => {
-            if (chrome.runtime.lastError) {}
             resolve(true);
           });
         });

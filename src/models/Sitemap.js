@@ -16,15 +16,34 @@
 
   const Selector = SelectorModule.Selector;
 
+  const TURKISH_CHAR_MAP = {
+    'ç': 'c', 'Ç': 'c',
+    'ğ': 'g', 'Ğ': 'g',
+    'ı': 'i', 'I': 'i', 'İ': 'i', 'i': 'i',
+    'ö': 'o', 'Ö': 'o',
+    'ş': 's', 'Ş': 's',
+    'ü': 'u', 'Ü': 'u'
+  };
+
   function slugifyId(str) {
     if (!str) return '';
-    return String(str)
-      .trim()
-      .toLowerCase()
+    let s = String(str).trim();
+    for (const [k, v] of Object.entries(TURKISH_CHAR_MAP)) {
+      s = s.split(k).join(v);
+    }
+    
+    // Normalize unicode accents
+    try {
+      s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    } catch (e) {}
+
+    s = s.toLowerCase()
       .replace(/[\s\t\r\n]+/g, '_')
       .replace(/[^a-z0-9_\-]/g, '_')
       .replace(/_{2,}/g, '_')
       .replace(/^_+|_+$/g, '');
+
+    return s || `sitemap_${Date.now().toString(36)}`;
   }
 
   function normalizeUrl(url) {
@@ -39,8 +58,8 @@
   class Sitemap {
     constructor(data = {}) {
       const rawId = String(data._id || data.id || '').trim();
-      this._id = slugifyId(rawId) || rawId;
-      this.name = String(data.name || rawId || this._id || '').trim();
+      this.name = String(data.name || rawId || 'Untitled Sitemap').trim();
+      this._id = slugifyId(rawId) || slugifyId(this.name) || `sitemap_${Date.now().toString(36)}`;
       
       let startUrls = data.startUrl || data.startUrls || [];
       if (typeof startUrls === 'string') {

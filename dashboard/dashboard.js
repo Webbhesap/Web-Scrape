@@ -525,6 +525,14 @@
       saveSelectorForm();
     });
 
+    const btnSaveSelector = document.getElementById('btn-save-selector');
+    if (btnSaveSelector) {
+      btnSaveSelector.addEventListener('click', (e) => {
+        e.preventDefault();
+        saveSelectorForm();
+      });
+    }
+
     document.getElementById('btn-cancel-selector-edit').addEventListener('click', () => {
       switchView('selectors');
     });
@@ -534,6 +542,13 @@
       e.preventDefault();
       saveSitemapMetaForm();
     });
+
+    if (elements.btnSaveSitemapMeta) {
+      elements.btnSaveSitemapMeta.addEventListener('click', (e) => {
+        e.preventDefault();
+        saveSitemapMetaForm();
+      });
+    }
 
     document.getElementById('btn-cancel-sitemap-meta').addEventListener('click', () => {
       if (state.currentSitemap) {
@@ -548,6 +563,14 @@
       e.preventDefault();
       importSitemapForm();
     });
+
+    const btnSubmitImport = document.getElementById('btn-submit-sitemap-import');
+    if (btnSubmitImport) {
+      btnSubmitImport.addEventListener('click', (e) => {
+        e.preventDefault();
+        importSitemapForm();
+      });
+    }
 
     document.getElementById('btn-cancel-sitemap-import').addEventListener('click', () => {
       switchView('sitemaps');
@@ -955,39 +978,43 @@
       return;
     }
 
-    if (state.currentSitemap) {
-      // Editing existing sitemap metadata
-      state.currentSitemap.name = rawName;
-      state.currentSitemap.startUrl = urls;
-      
-      const validation = state.currentSitemap.validate();
-      if (!validation.isValid) {
-        showSitemapError(validation.errors.join(' '));
-        return;
+    try {
+      if (state.currentSitemap) {
+        // Editing existing sitemap metadata
+        state.currentSitemap.name = rawName;
+        state.currentSitemap.startUrl = urls;
+        
+        const validation = state.currentSitemap.validate();
+        if (!validation.isValid) {
+          showSitemapError(validation.errors.join(' '));
+          return;
+        }
+
+        await AppStorage.saveSitemap(state.currentSitemap);
+      } else {
+        // Creating new sitemap
+        const newSitemap = new Sitemap({
+          _id: rawName,
+          name: rawName,
+          startUrl: urls,
+          selectors: []
+        });
+
+        const validation = newSitemap.validate();
+        if (!validation.isValid) {
+          showSitemapError(validation.errors.join(' '));
+          return;
+        }
+
+        await AppStorage.saveSitemap(newSitemap);
+        state.currentSitemap = newSitemap;
       }
 
-      await AppStorage.saveSitemap(state.currentSitemap);
-    } else {
-      // Creating new sitemap
-      const newSitemap = new Sitemap({
-        _id: rawName,
-        name: rawName,
-        startUrl: urls,
-        selectors: []
-      });
-
-      const validation = newSitemap.validate();
-      if (!validation.isValid) {
-        showSitemapError(validation.errors.join(' '));
-        return;
-      }
-
-      await AppStorage.saveSitemap(newSitemap);
-      state.currentSitemap = newSitemap;
+      await loadSitemaps();
+      openSitemap(state.currentSitemap._id, 'selectors');
+    } catch (err) {
+      showSitemapError('Error saving sitemap: ' + (err.message || err));
     }
-
-    await loadSitemaps();
-    openSitemap(state.currentSitemap._id, 'selectors');
   }
 
   function showSitemapError(msg) {
