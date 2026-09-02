@@ -22,6 +22,8 @@
   let toolbarEl = null;
   let previewModalEl = null;
   let isElementPreviewActive = false;
+  let scopeSelector = '';
+  let scopeRoots = [];
 
   // Helpers
   function getCleanClasses(el) {
@@ -89,10 +91,38 @@
     return allSameTag ? firstTag : '*';
   }
 
+  function queryInScope(sel) {
+    if (!sel) return [];
+    try {
+      if (scopeRoots.length) {
+        const out = [];
+        scopeRoots.forEach((root) => {
+          if (root.matches && root.matches(sel)) out.push(root);
+          root.querySelectorAll(sel).forEach((n) => out.push(n));
+        });
+        return out;
+      }
+      return Array.from(document.querySelectorAll(sel));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function isInsideScope(el) {
+    if (!scopeRoots.length) return true;
+    return scopeRoots.some((root) => root === el || root.contains(el));
+  }
+
   function getPathSelector(el) {
     const path = [];
     let cur = el;
+    const stopAt = scopeRoots.length ? scopeRoots : [];
     while (cur && cur !== document.body && cur !== document.documentElement) {
+      if (stopAt.includes(cur.parentElement) || stopAt.includes(cur)) {
+        let desc = getElementDescriptor(cur);
+        path.unshift(desc);
+        break;
+      }
       let desc = getElementDescriptor(cur);
       const parent = cur.parentElement;
       if (desc === cur.tagName.toLowerCase() && parent) {
@@ -120,7 +150,7 @@
     // If selector is present and preview enabled or auto-matching
     if (currentSelector && currentSelector.trim() !== '') {
       try {
-        const matched = document.querySelectorAll(currentSelector);
+        const matched = queryInScope(currentSelector);
         matched.forEach(el => {
           if (!selectedElements.includes(el)) {
             el.classList.add('ws-preview-highlight');
@@ -197,6 +227,7 @@
     }
     document.querySelectorAll('.ws-preview-highlight').forEach(el => el.classList.remove('ws-preview-highlight'));
     document.querySelectorAll('.ws-selected-highlight').forEach(el => el.classList.remove('ws-selected-highlight'));
+    document.querySelectorAll('.ws-scope-highlight').forEach(el => el.classList.remove('ws-scope-highlight'));
 
     if (containerEl && containerEl.parentNode) {
       containerEl.parentNode.removeChild(containerEl);
@@ -225,6 +256,13 @@
     }
 
     const target = e.target;
+    if (!isInsideScope(target)) {
+      if (currentHoveredElement) {
+        currentHoveredElement.classList.remove('ws-hover-highlight');
+        currentHoveredElement = null;
+      }
+      return;
+    }
     if (target === currentHoveredElement) return;
 
     if (currentHoveredElement) {
@@ -254,6 +292,7 @@
     e.stopPropagation();
 
     const target = e.target;
+    if (!isInsideScope(target)) return;
 
     // Toggle selection
     const existingIndex = selectedElements.indexOf(target);
@@ -306,7 +345,7 @@
 
     const newSelected = [];
     selectedElements.forEach(el => {
-      if (el.parentElement && el.parentElement !== document.body && el.parentElement !== document.documentElement) {
+      if (el.parentElement && el.parentElement !== document.body && el.parentElement !== document.documentElement && isInsideScope(el.parentElement)) {
         newSelected.push(el.parentElement);
       } else {
         newSelected.push(el);
@@ -356,7 +395,7 @@
 
     let elements = [];
     try {
-      elements = Array.from(document.querySelectorAll(currentSelector));
+      elements = queryInScope(currentSelector);
     } catch (e) {
       alert('Invalid CSS Selector: ' + currentSelector);
       return;
@@ -455,15 +494,19 @@
     currentSelector = options.selector || '';
     selectorType = options.selectorType || (options.type && String(options.type).startsWith('Selector') ? options.type : 'SelectorText');
     isMultiple = options.multiple || false;
+    scopeSelector = options.scopeSelector || '';
+    scopeRoots = [];
+    if (scopeSelector) {
+      try { scopeRoots = Array.from(document.querySelectorAll(scopeSelector)); } catch (e) { scopeRoots = []; }
+    }
 
     createUI();
 
+    document.querySelectorAll('.ws-scope-highlight').forEach((el) => el.classList.remove('ws-scope-highlight'));
+    scopeRoots.forEach((el) => el.classList.add('ws-scope-highlight'));
+
     if (currentSelector) {
-      try {
-        selectedElements = Array.from(document.querySelectorAll(currentSelector));
-      } catch (e) {
-        selectedElements = [];
-      }
+      selectedElements = queryInScope(currentSelector);
       updateHighlights();
     }
 
@@ -498,7 +541,7 @@
         currentSelector = request.selector || currentSelector;
         updateHighlights();
         let count = 0;
-        try { count = document.querySelectorAll(currentSelector).length; } catch (e) {}
+        count = queryInScope(currentSelector).length;
         sendResponse({ count: count });
       } else if (request.type === 'DATA_PREVIEW') {
         if (!isActive) startPicker(request);

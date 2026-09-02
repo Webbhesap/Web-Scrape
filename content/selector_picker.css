@@ -34,6 +34,12 @@
   background-color: rgba(16, 185, 129, 0.22) !important;
 }
 
+.ws-scope-highlight {
+  outline: 3px solid #c084fc !important;
+  outline-offset: 2px !important;
+  box-shadow: inset 0 0 0 9999px rgba(192, 132, 252, 0.06) !important;
+}
+
 /* Element preview overlay */
 .ws-preview-highlight {
   outline: 2px dashed var(--ws-preview-outline) !important;

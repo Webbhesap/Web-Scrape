@@ -37,6 +37,13 @@
     bindScraperEvents();
     bindDataViewerEvents();
     loadSitemaps();
+    const langBtn = document.getElementById('btn-lang-toggle');
+    if (langBtn && typeof AppI18n !== 'undefined') {
+      AppI18n.apply();
+      langBtn.addEventListener('click', () => {
+        AppI18n.setLang(AppI18n.getLang() === 'tr' ? 'en' : 'tr');
+      });
+    }
 
     // Check if query params specify sitemap
     const urlParams = new URLSearchParams(window.location.search);
@@ -1008,11 +1015,17 @@
               if (mode === 'preview') msgType = 'ELEMENT_PREVIEW';
               else if (mode === 'data-preview') msgType = 'DATA_PREVIEW';
 
+              let scopeSelector = '';
+              if (state.currentParentSelector && state.currentParentSelector !== '_root' && state.currentSitemap) {
+                const parentSel = state.currentSitemap.getSelectorById(state.currentParentSelector);
+                if (parentSel && parentSel.selector) scopeSelector = parentSel.selector;
+              }
               chrome.tabs.sendMessage(tabId, {
                 type: msgType,
                 selector: selStr,
                 selectorType: selType,
-                multiple: isMult
+                multiple: isMult,
+                scopeSelector: scopeSelector
               }, () => {
                 if (chrome.runtime.lastError) {
                   console.warn('Message send warning:', chrome.runtime.lastError.message);
@@ -1544,9 +1557,27 @@
     if (btnPrev) btnPrev.addEventListener('click', () => stepSlideshow(-1));
     const btnNext = document.getElementById('btn-slide-next');
     if (btnNext) btnNext.addEventListener('click', () => stepSlideshow(1));
+    const btnPlay = document.getElementById('btn-slide-play');
+    if (btnPlay) btnPlay.addEventListener('click', toggleSlideshowAutoplay);
+    const btnZipSlide = document.getElementById('btn-slide-zip');
+    if (btnZipSlide) btnZipSlide.addEventListener('click', () => downloadGalleryZip(false));
+    const btnZipAll = document.getElementById('btn-gallery-zip-all');
+    if (btnZipAll) btnZipAll.addEventListener('click', () => downloadGalleryZip(false));
+    const btnZipSel = document.getElementById('btn-gallery-zip-selected');
+    if (btnZipSel) btnZipSel.addEventListener('click', () => downloadGalleryZip(true));
+    const overlayEl = document.getElementById('slideshow-overlay');
+    if (overlayEl) {
+      let hideT;
+      overlayEl.addEventListener('mousemove', () => {
+        const chrome = document.getElementById('slideshow-chrome');
+        if (chrome) chrome.classList.add('show');
+        clearTimeout(hideT);
+        hideT = setTimeout(() => { if (chrome) chrome.classList.remove('show'); }, 1800);
+      });
+    }
     document.addEventListener('keydown', (e) => {
       const overlay = document.getElementById('slideshow-overlay');
-      if (!overlay || !overlay.classList.contains('open')) return;
+      if (!overlay || overlay.hasAttribute('hidden')) return;
       if (e.key === 'Escape') closeSlideshow();
       if (e.key === 'ArrowRight') stepSlideshow(1);
       if (e.key === 'ArrowLeft') stepSlideshow(-1);
@@ -1827,11 +1858,10 @@
       delBtn.type = 'button';
       delBtn.className = 'btn btn-danger btn-sm';
       delBtn.textContent = 'Delete';
-      const playBtn = document.createElement('button');
-      playBtn.type = 'button';
-      playBtn.className = 'btn btn-primary btn-sm';
-      playBtn.textContent = 'View';
-      playBtn.addEventListener('click', () => openSlideshow(idx));
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.className = 'gallery-select';
+      chk.addEventListener('change', () => card.classList.toggle('selected', chk.checked));
       saveBtn.addEventListener('click', async () => {
         const next = input.value.trim();
         const rec = state.scrapedData[item.rowIdx];
@@ -1848,9 +1878,9 @@
       });
       actions.appendChild(saveBtn);
       actions.appendChild(delBtn);
-      actions.appendChild(playBtn);
       meta.appendChild(input);
       meta.appendChild(actions);
+      card.appendChild(chk);
       card.appendChild(img);
       card.appendChild(meta);
       grid.appendChild(card);
@@ -1859,26 +1889,20 @@
 
   let slideIndex = 0;
   let slideTimer = null;
-  let slideProgressTimer = null;
+  let slidePlaying = false;
 
   function openSlideshow(index) {
     if (!state.galleryItems.length) renderGallery();
     if (!state.galleryItems.length) return;
     slideIndex = Math.max(0, Math.min(index || 0, state.galleryItems.length - 1));
+    slidePlaying = false;
     const overlay = document.getElementById('slideshow-overlay');
     if (!overlay) return;
+    overlay.hidden = false;
     overlay.classList.add('open');
-    const thumbs = document.getElementById('slideshow-thumbs');
-    if (!thumbs) return;
-    thumbs.innerHTML = '';
-    state.galleryItems.forEach((item, i) => {
-      const t = document.createElement('img');
-      t.src = item.url;
-      t.addEventListener('click', () => { slideIndex = i; showSlide(); restartSlideTimer(); });
-      thumbs.appendChild(t);
-    });
+    const play = document.getElementById('btn-slide-play');
+    if (play) play.textContent = '▶';
     showSlide();
-    restartSlideTimer();
   }
 
   function showSlide() {
@@ -1887,54 +1911,74 @@
     const item = items[slideIndex];
     const img = document.getElementById('slideshow-image');
     if (!img) return;
-    img.style.animation = 'none';
+    const trSel = (document.getElementById('slideshow-transition') || {}).value || 'fade';
+    img.classList.remove('tr-fade', 'tr-slide', 'tr-zoom');
     void img.offsetWidth;
-    img.style.animation = '';
     img.src = item.url;
-    document.getElementById('slideshow-counter').textContent = (slideIndex + 1) + ' / ' + items.length;
-    const link = document.getElementById('slideshow-url');
-    link.href = item.url;
-    link.textContent = item.url;
-    document.getElementById('slideshow-caption').textContent = item.key || 'Image';
-    document.querySelectorAll('#slideshow-thumbs img').forEach((el, i) => {
-      el.classList.toggle('active', i === slideIndex);
-    });
+    if (trSel !== 'none') img.classList.add('tr-' + trSel);
   }
 
   function stepSlideshow(dir) {
     if (!state.galleryItems.length) return;
     slideIndex = (slideIndex + dir + state.galleryItems.length) % state.galleryItems.length;
     showSlide();
-    restartSlideTimer();
   }
 
   function restartSlideTimer() {
     if (slideTimer) clearInterval(slideTimer);
-    if (slideProgressTimer) clearInterval(slideProgressTimer);
-    const auto = document.getElementById('slideshow-autoplay');
-    const bar = document.getElementById('slideshow-progress-bar');
-    if (bar) bar.style.width = '0%';
-    if (!auto || !auto.checked) return;
-    const speed = parseInt((document.getElementById('slideshow-speed') || {}).value, 10) || 3500;
-    const started = Date.now();
-    slideProgressTimer = setInterval(() => {
-      const pct = Math.min(100, ((Date.now() - started) / speed) * 100);
-      if (bar) bar.style.width = pct + '%';
-    }, 50);
-    slideTimer = setInterval(() => stepSlideshow(1), speed);
+    slideTimer = null;
+    if (!slidePlaying) return;
+    const sec = parseInt((document.getElementById('slideshow-interval') || {}).value, 10) || 4;
+    slideTimer = setInterval(() => stepSlideshow(1), Math.max(1, sec) * 1000);
   }
 
   function toggleSlideshowAutoplay() {
-    const auto = document.getElementById('slideshow-autoplay');
-    if (auto) auto.checked = !auto.checked;
+    slidePlaying = !slidePlaying;
+    const play = document.getElementById('btn-slide-play');
+    if (play) play.textContent = slidePlaying ? '❚❚' : '▶';
     restartSlideTimer();
   }
 
   function closeSlideshow() {
     const overlay = document.getElementById('slideshow-overlay');
-    if (overlay) overlay.classList.remove('open');
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.classList.remove('open');
+    }
+    slidePlaying = false;
     if (slideTimer) clearInterval(slideTimer);
-    if (slideProgressTimer) clearInterval(slideProgressTimer);
+  }
+
+  async function downloadGalleryZip(selectedOnly) {
+    if (typeof SimpleZip === 'undefined') return;
+    let items = state.galleryItems || [];
+    if (selectedOnly) {
+      const checks = document.querySelectorAll('#gallery-grid .gallery-select:checked');
+      const urls = new Set();
+      checks.forEach((c) => {
+        const card = c.closest('.gallery-card');
+        const im = card && card.querySelector('img');
+        if (im) urls.add(im.src);
+      });
+      items = items.filter((it) => urls.has(it.url));
+    }
+    if (!items.length) return;
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+      try {
+        const resp = await fetch(items[i].url);
+        const buf = await resp.arrayBuffer();
+        const ext = (items[i].url.split('?')[0].match(/\.([a-z0-9]+)$/i) || [null, 'jpg'])[1];
+        files.push({ name: 'img-' + String(i + 1).padStart(3, '0') + '.' + ext, data: new Uint8Array(buf) });
+      } catch (e) {}
+    }
+    if (!files.length) return;
+    const zipBytes = await SimpleZip.build(files);
+    const blob = new Blob([zipBytes], { type: 'application/zip' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'gallery.zip';
+    a.click();
   }
 
   function populateFindColumns(headers) {
