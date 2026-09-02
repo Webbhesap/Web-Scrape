@@ -23,10 +23,9 @@ test('UI Integration - Dashboard HTML loads, parses scripts and initializes clea
   const htmlPath = path.join(__dirname, '../dashboard/dashboard.html');
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
-  // Load in JSDOM with script execution enabled
+  // Load in JSDOM without fetching remote CSS/scripts (scripts are injected from disk below)
   const dom = new JSDOM(htmlContent, {
     runScripts: 'dangerously',
-    resources: 'usable',
     url: 'http://localhost:8080/dashboard/dashboard.html'
   });
 
