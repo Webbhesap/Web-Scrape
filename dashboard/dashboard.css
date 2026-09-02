@@ -35,14 +35,18 @@
   padding: 0;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   font-family: var(--font-family);
   background-color: var(--bg-main);
   color: var(--text-main);
   line-height: 1.5;
   font-size: 13px;
-  overflow-x: hidden;
-  height: 100vh;
+  overflow: hidden;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -562,4 +566,176 @@ textarea.form-control {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Drag and drop selectors */
+.drag-handle {
+  cursor: grab;
+  color: var(--text-dim);
+  padding: 0 6px;
+  user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+tr.selector-row.dragging { opacity: 0.45; }
+tr.selector-row.drop-target td {
+  outline: 2px dashed var(--primary);
+  background: rgba(13, 148, 136, 0.12);
+}
+.drop-root-zone {
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+}
+.drop-root-zone.drop-target {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(13, 148, 136, 0.1);
+}
+
+/* Find & Replace */
+.find-replace-bar {
+  display: none;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: #0f1a2e;
+  border-bottom: 1px solid var(--border-color);
+}
+.find-replace-bar.open { display: flex; }
+.find-replace-bar .form-group { margin: 0; }
+.find-replace-bar .form-control { min-width: 160px; }
+.table td.cell-editing {
+  white-space: normal;
+  overflow: visible;
+}
+.table td[contenteditable="true"] {
+  outline: 1px solid var(--border-focus);
+  background: var(--bg-input);
+  white-space: pre-wrap;
+}
+
+/* Gallery */
+.gallery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gallery-grid {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.gallery-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.gallery-card img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  background: #060911;
+  cursor: pointer;
+}
+.gallery-card .gallery-meta {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gallery-card input {
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+/* Slideshow overlay */
+.slideshow-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: rgba(3, 7, 18, 0.94);
+  flex-direction: column;
+}
+.slideshow-overlay.open { display: flex; }
+.slideshow-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 0;
+}
+.slideshow-stage img {
+  max-width: 90vw;
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  animation: fadeSlide 0.35s ease;
+}
+@keyframes fadeSlide {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+.slideshow-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: rgba(19, 29, 49, 0.9);
+  color: #fff;
+  font-size: 28px;
+  cursor: pointer;
+}
+.slideshow-nav.prev { left: 24px; }
+.slideshow-nav.next { right: 24px; }
+.slideshow-topbar, .slideshow-bottombar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  gap: 12px;
+  color: var(--text-muted);
+}
+.slideshow-thumbs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 20px 16px;
+}
+.slideshow-thumbs img {
+  width: 72px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  opacity: 0.5;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+.slideshow-thumbs img.active {
+  opacity: 1;
+  border-color: var(--primary);
+}
+.slideshow-progress {
+  height: 3px;
+  background: var(--border-color);
+}
+.slideshow-progress span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--primary);
 }

@@ -16,6 +16,7 @@
     editingSelectorId: null,
     scrapedData: [],
     filteredData: [],
+    galleryItems: [],
     scraperEngine: null,
     dataPagination: {
       page: 1,
@@ -87,6 +88,7 @@
       'sitemap-export': document.getElementById('view-sitemap-export'),
       scrape: document.getElementById('view-scrape'),
       'browse-data': document.getElementById('view-browse-data'),
+      gallery: document.getElementById('view-gallery'),
       'export-data': document.getElementById('view-export-data'),
       'selector-graph': document.getElementById('view-selector-graph')
     };
@@ -201,6 +203,7 @@
     document.querySelectorAll('.icon-edit').forEach(el => el.innerHTML = AppIcons.get('edit'));
     document.querySelectorAll('.icon-play').forEach(el => el.innerHTML = AppIcons.get('play'));
     document.querySelectorAll('.icon-table').forEach(el => el.innerHTML = AppIcons.get('table'));
+    document.querySelectorAll('.icon-image').forEach(el => el.innerHTML = AppIcons.get('image'));
     document.querySelectorAll('.icon-download').forEach(el => el.innerHTML = AppIcons.get('download'));
     document.querySelectorAll('.icon-code').forEach(el => el.innerHTML = AppIcons.get('code'));
     document.querySelectorAll('.icon-trash').forEach(el => el.innerHTML = AppIcons.get('trash'));
@@ -249,6 +252,8 @@
     document.getElementById('nav-sitemap-meta').addEventListener('click', () => openEditSitemapMeta());
     document.getElementById('nav-sitemap-scrape').addEventListener('click', () => switchView('scrape'));
     document.getElementById('nav-sitemap-browse').addEventListener('click', () => openBrowseData());
+    const navGallery = document.getElementById('nav-sitemap-gallery');
+    if (navGallery) navGallery.addEventListener('click', () => openGallery());
     document.getElementById('nav-sitemap-export-data').addEventListener('click', () => switchView('export-data'));
     document.getElementById('nav-sitemap-export-json').addEventListener('click', () => openExportSitemap());
     document.getElementById('nav-sitemap-delete').addEventListener('click', () => deleteCurrentSitemap());
@@ -281,6 +286,13 @@
       renderSelectorsList();
     } else if (viewName === 'selector-graph') {
       renderSelectorGraph();
+    } else if (viewName === 'gallery') {
+      renderGallery();
+    }
+
+    if (viewName === 'selector-edit') {
+      const main = document.querySelector('.main-container');
+      if (main) main.scrollTop = 0;
     }
   }
 
@@ -437,9 +449,26 @@
       return;
     }
 
+    const dropRoot = document.getElementById('drop-root-zone');
+    if (dropRoot) {
+      dropRoot.ondragover = (e) => { e.preventDefault(); dropRoot.classList.add('drop-target'); };
+      dropRoot.ondragleave = () => dropRoot.classList.remove('drop-target');
+      dropRoot.ondrop = (e) => {
+        e.preventDefault();
+        dropRoot.classList.remove('drop-target');
+        const id = e.dataTransfer.getData('text/selector-id');
+        if (id) reparentSelectorByDrag(id, '_root');
+      };
+    }
+
     selectorsInLevel.forEach(sel => {
       const tr = document.createElement('tr');
-      const typeMeta = Selector.SELECTOR_TYPES[sel.type] || Selector.SELECTOR_TYPES.SelectorText;
+      tr.className = 'selector-row';
+      tr.draggable = true;
+      tr.dataset.selectorId = sel.id;
+      const typeMeta = (typeof Selector === 'function' && Selector.SELECTOR_TYPES)
+        ? (Selector.SELECTOR_TYPES[sel.type] || Selector.SELECTOR_TYPES.SelectorText)
+        : { title: sel.type, acceptsChildren: false };
       const typeBadgeClass = getTypeBadgeClass(sel.type);
 
       const hasChildren = state.currentSitemap.getDirectChildSelectors(sel.id).length > 0;
@@ -447,6 +476,7 @@
 
       tr.innerHTML = `
         <td>
+          <span class="drag-handle" title="Drag to nest">⋮⋮</span>
           <a href="#" class="selector-id-link" style="font-weight:600; color:#38bdf8; text-decoration:none;">
             ${escapeHtml(sel.id)}
           </a>
@@ -487,6 +517,27 @@
       tr.querySelector('.action-edit').addEventListener('click', () => openEditSelector(sel.id));
       tr.querySelector('.action-delete').addEventListener('click', () => deleteSelector(sel.id));
 
+      tr.addEventListener('dragstart', (e) => {
+        tr.classList.add('dragging');
+        e.dataTransfer.setData('text/selector-id', sel.id);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      tr.addEventListener('dragend', () => tr.classList.remove('dragging'));
+      tr.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        tr.classList.add('drop-target');
+      });
+      tr.addEventListener('dragleave', () => tr.classList.remove('drop-target'));
+      tr.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        tr.classList.remove('drop-target');
+        const draggedId = e.dataTransfer.getData('text/selector-id');
+        if (draggedId && draggedId !== sel.id) {
+          reparentSelectorByDrag(draggedId, sel.id);
+        }
+      });
+
       const childrenBtn = tr.querySelector('.action-children');
       if (childrenBtn) {
         childrenBtn.addEventListener('click', () => {
@@ -499,6 +550,17 @@
 
       elements.tbodySelectors.appendChild(tr);
     });
+  }
+
+  async function reparentSelectorByDrag(selectorId, newParentId) {
+    if (!state.currentSitemap) return;
+    const ok = state.currentSitemap.reparentSelector(selectorId, newParentId);
+    if (!ok) {
+      alert('Cannot nest this selector here (would create a cycle or invalid parent).');
+      return;
+    }
+    await AppStorage.saveSitemap(state.currentSitemap);
+    renderSelectorsList();
   }
 
   function getTypeBadgeClass(type) {
@@ -1408,6 +1470,48 @@
 
     document.getElementById('btn-refresh-data').addEventListener('click', () => openBrowseData());
 
+    const btnFr = document.getElementById('btn-toggle-find-replace');
+    if (btnFr) {
+      btnFr.addEventListener('click', () => {
+        const bar = document.getElementById('find-replace-bar');
+        if (bar) bar.classList.toggle('open');
+        populateFindColumns();
+      });
+    }
+    const btnFindNext = document.getElementById('btn-find-next');
+    if (btnFindNext) btnFindNext.addEventListener('click', () => findNextInData());
+    const btnReplaceOne = document.getElementById('btn-replace-one');
+    if (btnReplaceOne) btnReplaceOne.addEventListener('click', () => replaceInData(false));
+    const btnReplaceAll = document.getElementById('btn-replace-all');
+    if (btnReplaceAll) btnReplaceAll.addEventListener('click', () => replaceInData(true));
+
+    const colRange = document.getElementById('gallery-columns');
+    if (colRange) {
+      colRange.addEventListener('input', () => {
+        const n = colRange.value;
+        const label = document.getElementById('gallery-columns-label');
+        if (label) label.textContent = n;
+        const grid = document.getElementById('gallery-grid');
+        if (grid) grid.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+      });
+    }
+    const btnSlide = document.getElementById('btn-start-slideshow');
+    if (btnSlide) btnSlide.addEventListener('click', () => openSlideshow(0));
+    const btnSlideClose = document.getElementById('btn-slideshow-close');
+    if (btnSlideClose) btnSlideClose.addEventListener('click', closeSlideshow);
+    const btnPrev = document.getElementById('btn-slide-prev');
+    if (btnPrev) btnPrev.addEventListener('click', () => stepSlideshow(-1));
+    const btnNext = document.getElementById('btn-slide-next');
+    if (btnNext) btnNext.addEventListener('click', () => stepSlideshow(1));
+    document.addEventListener('keydown', (e) => {
+      const overlay = document.getElementById('slideshow-overlay');
+      if (!overlay || !overlay.classList.contains('open')) return;
+      if (e.key === 'Escape') closeSlideshow();
+      if (e.key === 'ArrowRight') stepSlideshow(1);
+      if (e.key === 'ArrowLeft') stepSlideshow(-1);
+      if (e.key === ' ') { e.preventDefault(); toggleSlideshowAutoplay(); }
+    });
+
     document.getElementById('btn-export-csv-direct').addEventListener('click', () => {
       if (state.currentSitemap && state.scrapedData.length > 0) {
         Exporter.downloadCSV(state.scrapedData, state.currentSitemap.name);
@@ -1566,10 +1670,20 @@
         const val = row[h] !== undefined ? row[h] : '';
         td.textContent = String(val);
         td.title = String(val);
+        td.contentEditable = 'true';
+        td.dataset.col = h;
+        td.addEventListener('blur', async () => {
+          row[h] = td.textContent;
+          if (state.currentSitemap) {
+            await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+          }
+        });
         tr.appendChild(td);
       });
       elements.tbodyScrapedData.appendChild(tr);
     });
+
+    populateFindColumns(headers);
 
     // Update pagination labels
     elements.dataPageStart.textContent = startIndex + 1;
@@ -1592,6 +1706,297 @@
   function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function looksLikeImageUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    const u = url.trim();
+    if (!/^https?:\/\//i.test(u)) return false;
+    if (/\.(jpe?g|png|gif|webp|avif|bmp|svg)(\?|#|$)/i.test(u)) return true;
+    if (/[?&](format|fm)=(jpe?g|png|webp|gif)/i.test(u)) return true;
+    return /\/(image|img|photos?|media|cdn|thumb)/i.test(u);
+  }
+
+  function collectGalleryItems(records) {
+    const items = [];
+    const seen = new Set();
+    (records || []).forEach((row, rowIdx) => {
+      Object.keys(row).forEach((key) => {
+        const val = row[key];
+        const parts = Array.isArray(val) ? val : [val];
+        parts.forEach((p) => {
+          const url = String(p || '').trim();
+          if (!url || seen.has(url)) return;
+          const keyHint = /image|img|src|photo|thumb/i.test(key);
+          if (looksLikeImageUrl(url) || (keyHint && /^https?:\/\//i.test(url))) {
+            seen.add(url);
+            items.push({ rowIdx, key, url });
+          }
+        });
+      });
+    });
+    return items;
+  }
+
+  async function openGallery() {
+    if (!state.currentSitemap) return;
+    try {
+      state.scrapedData = await AppStorage.getScrapedData(state.currentSitemap._id);
+    } catch (e) {
+      state.scrapedData = [];
+    }
+    switchView('gallery');
+  }
+
+  function renderGallery() {
+    const grid = document.getElementById('gallery-grid');
+    const badge = document.getElementById('gallery-count-badge');
+    if (!grid) return;
+    state.galleryItems = collectGalleryItems(state.scrapedData);
+    if (badge) badge.textContent = state.galleryItems.length + ' images';
+    const cols = (document.getElementById('gallery-columns') || {}).value || 4;
+    grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    grid.innerHTML = '';
+    if (state.galleryItems.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">No images found</div><div>Scrape image selectors or URLs ending in jpg/png/webp.</div></div>';
+      return;
+    }
+    state.galleryItems.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'gallery-card';
+      const img = document.createElement('img');
+      img.src = item.url;
+      img.alt = '';
+      img.addEventListener('click', () => openSlideshow(idx));
+      const meta = document.createElement('div');
+      meta.className = 'gallery-meta';
+      const input = document.createElement('input');
+      input.className = 'form-control gallery-url';
+      input.value = item.url;
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.gap = '6px';
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'btn btn-secondary btn-sm';
+      saveBtn.textContent = 'Save URL';
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn btn-danger btn-sm';
+      delBtn.textContent = 'Delete';
+      const playBtn = document.createElement('button');
+      playBtn.type = 'button';
+      playBtn.className = 'btn btn-primary btn-sm';
+      playBtn.textContent = 'View';
+      playBtn.addEventListener('click', () => openSlideshow(idx));
+      saveBtn.addEventListener('click', async () => {
+        const next = input.value.trim();
+        const rec = state.scrapedData[item.rowIdx];
+        if (rec) rec[item.key] = next;
+        item.url = next;
+        if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        renderGallery();
+      });
+      delBtn.addEventListener('click', async () => {
+        const rec = state.scrapedData[item.rowIdx];
+        if (rec) rec[item.key] = '';
+        if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        renderGallery();
+      });
+      actions.appendChild(saveBtn);
+      actions.appendChild(delBtn);
+      actions.appendChild(playBtn);
+      meta.appendChild(input);
+      meta.appendChild(actions);
+      card.appendChild(img);
+      card.appendChild(meta);
+      grid.appendChild(card);
+    });
+  }
+
+  let slideIndex = 0;
+  let slideTimer = null;
+  let slideProgressTimer = null;
+
+  function openSlideshow(index) {
+    if (!state.galleryItems.length) renderGallery();
+    if (!state.galleryItems.length) return;
+    slideIndex = Math.max(0, Math.min(index || 0, state.galleryItems.length - 1));
+    const overlay = document.getElementById('slideshow-overlay');
+    overlay.classList.add('open');
+    const thumbs = document.getElementById('slideshow-thumbs');
+    thumbs.innerHTML = '';
+    state.galleryItems.forEach((item, i) => {
+      const t = document.createElement('img');
+      t.src = item.url;
+      t.addEventListener('click', () => { slideIndex = i; showSlide(); restartSlideTimer(); });
+      thumbs.appendChild(t);
+    });
+    showSlide();
+    restartSlideTimer();
+  }
+
+  function showSlide() {
+    const items = state.galleryItems;
+    if (!items.length) return;
+    const item = items[slideIndex];
+    const img = document.getElementById('slideshow-image');
+    img.style.animation = 'none';
+    void img.offsetWidth;
+    img.style.animation = '';
+    img.src = item.url;
+    document.getElementById('slideshow-counter').textContent = (slideIndex + 1) + ' / ' + items.length;
+    const link = document.getElementById('slideshow-url');
+    link.href = item.url;
+    link.textContent = item.url;
+    document.getElementById('slideshow-caption').textContent = item.key || 'Image';
+    document.querySelectorAll('#slideshow-thumbs img').forEach((el, i) => {
+      el.classList.toggle('active', i === slideIndex);
+    });
+  }
+
+  function stepSlideshow(dir) {
+    if (!state.galleryItems.length) return;
+    slideIndex = (slideIndex + dir + state.galleryItems.length) % state.galleryItems.length;
+    showSlide();
+    restartSlideTimer();
+  }
+
+  function restartSlideTimer() {
+    if (slideTimer) clearInterval(slideTimer);
+    if (slideProgressTimer) clearInterval(slideProgressTimer);
+    const auto = document.getElementById('slideshow-autoplay');
+    const bar = document.getElementById('slideshow-progress-bar');
+    if (bar) bar.style.width = '0%';
+    if (!auto || !auto.checked) return;
+    const speed = parseInt((document.getElementById('slideshow-speed') || {}).value, 10) || 3500;
+    const started = Date.now();
+    slideProgressTimer = setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - started) / speed) * 100);
+      if (bar) bar.style.width = pct + '%';
+    }, 50);
+    slideTimer = setInterval(() => stepSlideshow(1), speed);
+  }
+
+  function toggleSlideshowAutoplay() {
+    const auto = document.getElementById('slideshow-autoplay');
+    if (auto) auto.checked = !auto.checked;
+    restartSlideTimer();
+  }
+
+  function closeSlideshow() {
+    const overlay = document.getElementById('slideshow-overlay');
+    if (overlay) overlay.classList.remove('open');
+    if (slideTimer) clearInterval(slideTimer);
+    if (slideProgressTimer) clearInterval(slideProgressTimer);
+  }
+
+  function populateFindColumns(headers) {
+    const sel = document.getElementById('find-column');
+    if (!sel) return;
+    const cols = headers || (state.filteredData[0] ? Object.keys(state.filteredData[0]) : []);
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All columns</option>';
+    cols.forEach((c) => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+  }
+
+  function buildFindRegex() {
+    const raw = (document.getElementById('find-text') || {}).value || '';
+    if (!raw) return null;
+    const caseSensitive = document.getElementById('find-case') && document.getElementById('find-case').checked;
+    const whole = document.getElementById('find-word') && document.getElementById('find-word').checked;
+    const asRegex = document.getElementById('find-regex') && document.getElementById('find-regex').checked;
+    try {
+      let source = asRegex ? raw : raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (whole) source = '\\b' + source + '\\b';
+      return new RegExp(source, caseSensitive ? 'g' : 'gi');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  let findPos = 0;
+  function findNextInData() {
+    const re = buildFindRegex();
+    const status = document.getElementById('find-replace-status');
+    if (!re) { if (status) status.textContent = 'Enter text to find'; return; }
+    const col = (document.getElementById('find-column') || {}).value || '';
+    const rows = state.filteredData;
+    for (let i = 0; i < rows.length; i++) {
+      const idx = (findPos + i) % rows.length;
+      const row = rows[idx];
+      const keys = col ? [col] : Object.keys(row);
+      for (const k of keys) {
+        const val = String(row[k] != null ? row[k] : '');
+        re.lastIndex = 0;
+        if (re.test(val)) {
+          findPos = (idx + 1) % rows.length;
+          state.dataPagination.page = Math.floor(idx / state.dataPagination.pageSize) + 1;
+          renderDataTablePage();
+          highlightFindCell(idx, k);
+          if (status) status.textContent = 'Match in row ' + (idx + 1) + ', column ' + k;
+          return;
+        }
+      }
+    }
+    if (status) status.textContent = 'No matches';
+  }
+
+  function highlightFindCell(filteredIndex, col) {
+    const start = (state.dataPagination.page - 1) * state.dataPagination.pageSize;
+    const local = filteredIndex - start;
+    const tr = elements.tbodyScrapedData.children[local];
+    if (!tr) return;
+    Array.from(tr.children).forEach((td) => {
+      if (td.dataset.col === col) {
+        td.style.background = 'rgba(250, 204, 21, 0.25)';
+        td.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  async function replaceInData(all) {
+    const re = buildFindRegex();
+    const status = document.getElementById('find-replace-status');
+    const replacement = (document.getElementById('replace-text') || {}).value || '';
+    if (!re) { if (status) status.textContent = 'Enter text to find'; return; }
+    const col = (document.getElementById('find-column') || {}).value || '';
+    let count = 0;
+    const apply = (row) => {
+      const keys = col ? [col] : Object.keys(row);
+      keys.forEach((k) => {
+        const val = String(row[k] != null ? row[k] : '');
+        re.lastIndex = 0;
+        if (!re.test(val)) return;
+        re.lastIndex = 0;
+        if (all) {
+          row[k] = val.replace(re, replacement);
+          count++;
+        } else if (count === 0) {
+          row[k] = val.replace(re, replacement);
+          count++;
+        }
+      });
+    };
+    if (all) {
+      state.scrapedData.forEach(apply);
+    } else {
+      const start = findPos;
+      for (let i = 0; i < state.filteredData.length && count === 0; i++) {
+        const idx = (start + i) % state.filteredData.length;
+        apply(state.filteredData[idx]);
+        if (count) findPos = (idx + 1) % state.filteredData.length;
+      }
+    }
+    if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+    filterAndRenderDataTable();
+    if (status) status.textContent = all ? ('Replaced in ' + count + ' fields') : (count ? 'Replaced 1 match' : 'No matches');
   }
 
   // Initialize App on DOM Ready

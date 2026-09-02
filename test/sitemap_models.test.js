@@ -75,6 +75,21 @@ test('Sitemap Model - Lifecycle & Selector hierarchy', () => {
   assert.deepEqual(sitemap.selectors[0].parentSelectors, ['_root']); // cleaned up to _root
 });
 
+test('Sitemap Model - Drag reparent without cycles', () => {
+  const sitemap = new Sitemap({
+    _id: 'nest',
+    startUrl: ['https://example.com'],
+    selectors: [
+      { id: 'card', type: 'SelectorElement', selector: '.card', parentSelectors: ['_root'] },
+      { id: 'title', type: 'SelectorText', selector: 'h1', parentSelectors: ['_root'] }
+    ]
+  });
+  assert.equal(sitemap.reparentSelector('title', 'card'), true);
+  assert.deepEqual(sitemap.getSelectorById('title').parentSelectors, ['card']);
+  assert.equal(sitemap.reparentSelector('card', 'title'), false);
+  assert.equal(sitemap.reparentSelector('title', 'title'), false);
+});
+
 test('Sitemap Model - Auto Slugification & URL Normalization', () => {
   const sitemap = new Sitemap({
     _id: 'My Special E-Commerce Store 2026!',

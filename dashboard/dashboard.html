@@ -67,6 +67,10 @@
             <span class="icon-table"></span>
             <span>Browse data</span>
           </a>
+          <a class="dropdown-item" id="nav-sitemap-gallery">
+            <span class="icon-image"></span>
+            <span>Image gallery</span>
+          </a>
           <a class="dropdown-item" id="nav-sitemap-export-data">
             <span class="icon-download"></span>
             <span>Export data</span>
@@ -158,6 +162,7 @@
             </button>
           </div>
         </div>
+        <div class="drop-root-zone" id="drop-root-zone">Drop here to move selector to _root</div>
         <div class="table-container">
           <table class="table" id="table-selectors">
             <thead>
@@ -576,6 +581,9 @@
           </div>
           <div style="display:flex; gap:8px;">
             <input type="text" id="search-data-input" class="form-control" placeholder="Search data..." style="width:200px; padding:4px 8px; font-size:12px;">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-find-replace">
+              <span>Find / Replace</span>
+            </button>
             <button class="btn btn-secondary btn-sm" id="btn-refresh-data">
               <span class="icon-refresh"></span>
               <span>Refresh</span>
@@ -612,6 +620,26 @@
             <button class="btn btn-secondary btn-sm" id="btn-data-next-page">Next</button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Image Gallery -->
+    <section class="view-panel" id="view-gallery">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-image"></span>
+            <span>Image Gallery</span>
+            <span class="badge" id="gallery-count-badge" style="background: rgba(168,85,247,0.2); color:#c084fc; margin-left:8px;">0 images</span>
+          </div>
+          <div class="gallery-toolbar">
+            <label class="form-label" style="margin:0;">Columns</label>
+            <input type="range" id="gallery-columns" min="2" max="8" value="4">
+            <span id="gallery-columns-label">4</span>
+            <button class="btn btn-primary btn-sm" id="btn-start-slideshow">Start slideshow</button>
+          </div>
+        </div>
+        <div class="gallery-grid" id="gallery-grid" style="grid-template-columns: repeat(4, 1fr);"></div>
       </div>
     </section>
 

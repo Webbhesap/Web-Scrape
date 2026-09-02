@@ -140,6 +140,30 @@
       return ['_root', ...this.selectors.map(s => s.id)];
     }
 
+    wouldCreateCycle(selectorId, newParentId) {
+      if (!selectorId || !newParentId || selectorId === newParentId) return true;
+      let cur = newParentId;
+      const seen = new Set();
+      while (cur && cur !== '_root') {
+        if (cur === selectorId) return true;
+        if (seen.has(cur)) break;
+        seen.add(cur);
+        const parent = this.getSelectorById(cur);
+        cur = parent && parent.parentSelectors && parent.parentSelectors[0];
+      }
+      return false;
+    }
+
+    reparentSelector(selectorId, newParentId) {
+      const sel = this.getSelectorById(selectorId);
+      if (!sel) return false;
+      const parentId = newParentId || '_root';
+      if (this.wouldCreateCycle(selectorId, parentId)) return false;
+      sel.parentSelectors = [parentId];
+      this.updatedAt = new Date().toISOString();
+      return true;
+    }
+
     addSelector(selector) {
       const selInstance = selector instanceof Selector ? selector : new Selector(selector);
       const existingIdx = this.selectors.findIndex(s => s.id === selInstance.id);
