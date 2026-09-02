@@ -3,6 +3,21 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+const AppIcons = require('../lib/icons.js');
+
+test('AppIcons - All SVG icons are valid XML and well-formed path commands', () => {
+  for (const [name, svgStr] of Object.entries(AppIcons.icons)) {
+    const dom = new JSDOM(svgStr, { contentType: 'image/svg+xml' });
+    const errors = dom.window.document.querySelectorAll('parsererror');
+    assert.equal(errors.length, 0, `Icon "${name}" has XML parse error`);
+
+    const paths = dom.window.document.querySelectorAll('path');
+    paths.forEach(p => {
+      const d = p.getAttribute('d');
+      assert.ok(d && /^[a-zA-Z]/.test(d.trim()), `Icon "${name}" path d must start with a valid command (e.g. M, m, l, etc.): got "${d}"`);
+    });
+  }
+});
 
 test('UI Integration - Dashboard HTML loads, parses scripts and initializes cleanly', async () => {
   const htmlPath = path.join(__dirname, '../dashboard/dashboard.html');
