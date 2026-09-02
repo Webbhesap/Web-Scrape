@@ -29,6 +29,11 @@
   // DOM Elements Cache
   const elements = {};
 
+  function t(key, vars) {
+    if (typeof AppI18n !== 'undefined') return AppI18n.t(key, vars);
+    return key;
+  }
+
   function init() {
     cacheElements();
     renderIcons();
@@ -37,6 +42,13 @@
     bindScraperEvents();
     bindDataViewerEvents();
     loadSitemaps();
+    window.__wsOnLangChange = function () {
+      if (typeof AppI18n !== 'undefined') AppI18n.apply();
+      if (state.currentView === 'sitemaps') renderSitemapsList();
+      else if (state.currentView === 'selectors') renderSelectorsList();
+      else if (state.currentView === 'gallery') renderGallery();
+      else if (state.currentView === 'browse-data') filterAndRenderDataTable();
+    };
     const langBtn = document.getElementById('btn-lang-toggle');
     if (langBtn && typeof AppI18n !== 'undefined') {
       AppI18n.apply();
@@ -356,8 +368,8 @@
           <td colspan="5">
             <div class="empty-state">
               <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
-              <div class="empty-state-title">No Sitemaps Found</div>
-              <div>Click "Create Sitemap" to start scraping any website!</div>
+              <div class="empty-state-title">${t('noSitemaps')}</div>
+              <div>${t('noSitemapsHint')}</div>
             </div>
           </td>
         </tr>
@@ -382,16 +394,16 @@
           ${escapeHtml(startUrlsList[0] || '')} ${startUrlsList.length > 1 ? `<span class="badge" style="background:#1e293b; color:#94a3b8;">+${startUrlsList.length - 1}</span>` : ''}
         </td>
         <td>
-          <span class="badge" style="background:rgba(13,148,136,0.2); color:#2dd4bf;">${selectorsCount} selectors</span>
+          <span class="badge" style="background:rgba(13,148,136,0.2); color:#2dd4bf;">${t('nSelectors', { n: selectorsCount })}</span>
         </td>
         <td style="color:#94a3b8; font-size:11px;">${modifiedDate}</td>
         <td style="text-align:right;">
           <div style="display:inline-flex; gap:4px;">
-            <button class="btn btn-secondary btn-sm action-open" title="Open Selectors">Open</button>
-            <button class="btn btn-primary btn-sm action-scrape" title="Scrape Sitemap">Scrape</button>
-            <button class="btn btn-secondary btn-sm action-browse" title="Browse Data">Data</button>
-            <button class="btn btn-secondary btn-sm action-clone" title="Clone Sitemap">Clone</button>
-            <button class="btn btn-danger btn-sm action-delete" title="Delete Sitemap">Delete</button>
+            <button class="btn btn-secondary btn-sm action-open">${t('open')}</button>
+            <button class="btn btn-primary btn-sm action-scrape">${t('scrape')}</button>
+            <button class="btn btn-secondary btn-sm action-browse">${t('data')}</button>
+            <button class="btn btn-secondary btn-sm action-clone">${t('clone')}</button>
+            <button class="btn btn-danger btn-sm action-delete">${t('delete')}</button>
           </div>
         </td>
       `;
@@ -414,7 +426,7 @@
   async function openSitemap(sitemapId, targetView = 'selectors') {
     const rawData = await AppStorage.getSitemap(sitemapId);
     if (!rawData) {
-      alert('Sitemap not found: ' + sitemapId);
+      alert(t('sitemapNotFound', { id: sitemapId }));
       switchView('sitemaps');
       return;
     }
@@ -436,7 +448,7 @@
   function renderSelectorsList() {
     if (!state.currentSitemap) return;
 
-    elements.selectorsViewTitle.textContent = `Selectors in "${state.currentParentSelector}"`;
+    elements.selectorsViewTitle.textContent = t('selectorsIn', { id: state.currentParentSelector });
 
     const selectorsInLevel = state.currentSitemap.getDirectChildSelectors(state.currentParentSelector);
     elements.tbodySelectors.innerHTML = '';
@@ -447,8 +459,8 @@
           <td colspan="6">
             <div class="empty-state">
               <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-              <div class="empty-state-title">No Selectors in "${state.currentParentSelector}"</div>
-              <div>Click "Add new selector" to extract fields or navigate sub-pages.</div>
+              <div class="empty-state-title">${t('noSelectors', { id: state.currentParentSelector })}</div>
+              <div>${t('noSelectorsHint')}</div>
             </div>
           </td>
         </tr>
@@ -492,7 +504,12 @@
           ${escapeHtml(sel.selector || '-')}
         </td>
         <td>
-          <span class="badge ${typeBadgeClass}">${typeMeta.title}</span>
+          <span class="badge ${typeBadgeClass}">${t({
+            SelectorText: 'typeText', SelectorLink: 'typeLink', SelectorPopupLink: 'typePopup',
+            SelectorImage: 'typeImage', SelectorTable: 'typeTable', SelectorElement: 'typeElement',
+            SelectorElementAttribute: 'typeAttr', SelectorHTML: 'typeHtml', SelectorGrouped: 'typeGrouped',
+            SelectorPagination: 'typePagination', SelectorElementClick: 'typeClick', SelectorElementScroll: 'typeScroll'
+          }[sel.type] || 'typeText')}</span>
         </td>
         <td>
           <span style="color:${sel.multiple ? '#34d399' : '#64748b'}; font-weight:600;">
@@ -507,11 +524,11 @@
             ${canHaveChildren ? `
               <button class="btn btn-secondary btn-sm action-children" title="Open Child Selectors">
                 <span class="icon-chevron-right"></span>
-                <span>Select (${state.currentSitemap.getDirectChildSelectors(sel.id).length})</span>
+                <span>${t('selectChildren')} (${state.currentSitemap.getDirectChildSelectors(sel.id).length})</span>
               </button>
             ` : ''}
-            <button class="btn btn-secondary btn-sm action-edit" title="Edit Selector">Edit</button>
-            <button class="btn btn-danger btn-sm action-delete" title="Delete Selector">Delete</button>
+            <button class="btn btn-secondary btn-sm action-edit">${t('edit')}</button>
+            <button class="btn btn-danger btn-sm action-delete">${t('delete')}</button>
           </div>
         </td>
       `;
@@ -578,12 +595,12 @@
     const types = (typeof Selector === 'function' && Selector.SELECTOR_TYPES) ? Selector.SELECTOR_TYPES : {};
     const canNest = newParentId === '_root' || (parent && (parent.acceptsChildren || (types[parent.type] && types[parent.type].acceptsChildren)));
     if (!canNest) {
-      alert('Only container types (Element, Link, Pagination, Click, Scroll) can have children.');
+      alert(t('nestOnlyContainers'));
       return;
     }
     const ok = state.currentSitemap.reparentSelector(selectorId, newParentId);
     if (!ok) {
-      alert('Cannot nest this selector here (would create a cycle or invalid parent).');
+      alert(t('nestCycle'));
       return;
     }
     await AppStorage.saveSitemap(state.currentSitemap);
@@ -599,7 +616,7 @@
     }
     ok = state.currentSitemap.reorderSibling(draggedId, targetId, mode === 'drop-after');
     if (!ok) {
-      alert('Could not reorder selectors.');
+      alert(t('reorderFail'));
       return;
     }
     await AppStorage.saveSitemap(state.currentSitemap);
@@ -706,7 +723,7 @@
     document.getElementById('btn-copy-sitemap-json').addEventListener('click', () => {
       elements.fieldExportJson.select();
       navigator.clipboard.writeText(elements.fieldExportJson.value);
-      alert('Sitemap JSON copied to clipboard!');
+      alert(t('copiedJson'));
     });
 
     document.getElementById('btn-download-sitemap-json').addEventListener('click', () => {
@@ -757,7 +774,7 @@
       elements.selectorEditError.style.display = 'none';
       elements.selectorEditError.textContent = '';
     }
-    elements.selectorEditTitle.textContent = `Add Selector in "${state.currentParentSelector}"`;
+    elements.selectorEditTitle.textContent = t('addSelectorIn', { id: state.currentParentSelector });
     elements.formSelectorEdit.reset();
 
     elements.fieldSelectorType.value = 'SelectorText';
@@ -777,7 +794,7 @@
       elements.selectorEditError.style.display = 'none';
       elements.selectorEditError.textContent = '';
     }
-    elements.selectorEditTitle.textContent = `Edit Selector "${sel.id}"`;
+    elements.selectorEditTitle.textContent = t('editSelector', { id: sel.id });
 
     elements.fieldSelectorId.value = sel.id;
     elements.fieldSelectorType.value = sel.type;
@@ -855,13 +872,13 @@
     const parentSelectors = parentCheckboxes.map(c => c.value);
 
     if (parentSelectors.length === 0) {
-      showSelectorError('Please select at least one parent selector (e.g. _root).');
+      showSelectorError(t('needParent'));
       return;
     }
 
     const rawId = elements.fieldSelectorId.value.trim();
     if (!rawId) {
-      showSelectorError('Selector ID is required.');
+      showSelectorError(t('needSelectorId'));
       return;
     }
 
@@ -927,7 +944,7 @@
   }
 
   async function deleteSelector(selectorId) {
-    if (!confirm(`Are you sure you want to delete selector "${selectorId}" and its child links?`)) {
+    if (!confirm(t('confirmDeleteSelector', { id: selectorId }))) {
       return;
     }
 
@@ -976,19 +993,19 @@
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.scripting) {
       getTargetTabId((tabId) => {
         if (!tabId) {
-          alert('No active webpage tab found to select elements from. Please open a webpage in Chrome.');
+          alert(t('noActiveTab'));
           return;
         }
 
         chrome.tabs.get(tabId, (tabInfo) => {
           if (chrome.runtime.lastError || !tabInfo) {
             console.warn('Target tab does not exist or was closed:', chrome.runtime.lastError?.message);
-            alert('Target webpage tab was closed or is not accessible.');
+            alert(t('tabClosed'));
             return;
           }
 
           if (tabInfo.url && (tabInfo.url.startsWith('chrome://') || tabInfo.url.startsWith('edge://') || tabInfo.url.startsWith('chrome-extension://') || tabInfo.url.startsWith('about:'))) {
-            alert('Cannot select elements on browser system pages (chrome://). Please navigate to a standard website (http:// or https://).');
+            alert(t('systemPage'));
             return;
           }
 
@@ -999,7 +1016,7 @@
           }, () => {
             if (chrome.runtime.lastError) {
               console.warn('Script injection error:', chrome.runtime.lastError.message);
-              alert('Could not attach selector tool to this page: ' + chrome.runtime.lastError.message);
+              alert(t('attachFail', { msg: chrome.runtime.lastError.message }));
               return;
             }
 
@@ -1055,8 +1072,8 @@
       elements.sitemapMetaError.style.display = 'none';
       elements.sitemapMetaError.textContent = '';
     }
-    elements.sitemapMetaTitle.textContent = 'Create New Sitemap';
-    elements.btnSaveSitemapMeta.textContent = 'Create Sitemap';
+    elements.sitemapMetaTitle.textContent = t('createNewSitemapTitle');
+    elements.btnSaveSitemapMeta.textContent = t('createSitemap');
     elements.formSitemapMeta.reset();
     elements.fieldSitemapId.readOnly = false;
     switchView('sitemap-meta');
@@ -1068,8 +1085,8 @@
       elements.sitemapMetaError.style.display = 'none';
       elements.sitemapMetaError.textContent = '';
     }
-    elements.sitemapMetaTitle.textContent = `Edit Metadata: ${state.currentSitemap.name || state.currentSitemap._id}`;
-    elements.btnSaveSitemapMeta.textContent = 'Save Metadata';
+    elements.sitemapMetaTitle.textContent = t('editMetadataTitle', { name: state.currentSitemap.name || state.currentSitemap._id });
+    elements.btnSaveSitemapMeta.textContent = t('saveMetadata');
     elements.fieldSitemapId.value = state.currentSitemap.name || state.currentSitemap._id;
     elements.fieldSitemapId.readOnly = false;
     elements.fieldSitemapUrls.value = state.currentSitemap.startUrl.join('\n');
@@ -1084,7 +1101,7 @@
 
     const rawName = elements.fieldSitemapId.value.trim();
     if (!rawName) {
-      showSitemapError('Sitemap name is required.');
+      showSitemapError(t('needSitemapName'));
       return;
     }
 
@@ -1092,7 +1109,7 @@
     const urls = urlsRaw.split('\n').map(u => u.trim()).filter(Boolean);
 
     if (urls.length === 0) {
-      showSitemapError('At least one Start URL is required.');
+      showSitemapError(t('needStartUrl'));
       return;
     }
 
@@ -1101,9 +1118,9 @@
         // Editing existing sitemap metadata
         state.currentSitemap.name = rawName;
         state.currentSitemap.startUrl = urls.map(u => {
-          const t = String(u).trim();
-          if (!t.startsWith('http://') && !t.startsWith('https://') && !t.startsWith('file://')) {
-            return 'https://' + t;
+          const urlText = String(u).trim();
+          if (!urlText.startsWith('http://') && !urlText.startsWith('https://') && !urlText.startsWith('file://')) {
+            return 'https://' + urlText;
           }
           return t;
         });
@@ -1137,7 +1154,7 @@
       await loadSitemaps();
       openSitemap(state.currentSitemap._id, 'selectors');
     } catch (err) {
-      showSitemapError('Error saving sitemap: ' + (err.message || err));
+      showSitemapError(t('saveSitemapErr', { msg: err.message || err }));
     }
   }
 
@@ -1167,7 +1184,7 @@
 
     const jsonStr = elements.fieldImportJson.value.trim();
     if (!jsonStr) {
-      showImportError('Please provide Sitemap JSON.');
+      showImportError(t('needJson'));
       return;
     }
 
@@ -1183,7 +1200,7 @@
       const sitemap = new Sitemap(parsed);
       const validation = sitemap.validate();
       if (!validation.isValid) {
-        showImportError('Invalid Sitemap JSON: ' + validation.errors.join(' '));
+        showImportError(t('invalidSitemapJson', { msg: validation.errors.join(' ') }));
         return;
       }
 
@@ -1191,7 +1208,7 @@
       await loadSitemaps();
       openSitemap(sitemap._id, 'selectors');
     } catch (e) {
-      showImportError('JSON Parse Error: ' + e.message);
+      showImportError(t('jsonParseErr', { msg: e.message }));
     }
   }
 
@@ -1223,7 +1240,7 @@
 
   async function deleteCurrentSitemap() {
     if (!state.currentSitemap) return;
-    if (confirm(`Are you sure you want to permanently delete sitemap "${state.currentSitemap.name || state.currentSitemap._id}" and its data?`)) {
+    if (confirm(t('confirmDeleteSitemap', { name: state.currentSitemap.name || state.currentSitemap._id }))) {
       await AppStorage.deleteSitemap(state.currentSitemap._id);
       state.currentSitemap = null;
       elements.dropdownCurrentSitemap.style.display = 'none';
@@ -1233,7 +1250,7 @@
   }
 
   async function deleteSitemapDirect(sitemapId) {
-    if (confirm(`Are you sure you want to permanently delete sitemap "${sitemapId}"?`)) {
+    if (confirm(t('confirmDeleteSitemapId', { id: sitemapId }))) {
       await AppStorage.deleteSitemap(sitemapId);
       if (state.currentSitemap && state.currentSitemap._id === sitemapId) {
         state.currentSitemap = null;
@@ -1565,16 +1582,35 @@
     if (btnZipAll) btnZipAll.addEventListener('click', () => downloadGalleryZip(false));
     const btnZipSel = document.getElementById('btn-gallery-zip-selected');
     if (btnZipSel) btnZipSel.addEventListener('click', () => downloadGalleryZip(true));
+    let chromeHideTimer = null;
+    function pulseSlideshowChrome() {
+      const chrome = document.getElementById('slideshow-chrome');
+      if (!chrome) return;
+      chrome.classList.add('show');
+      clearTimeout(chromeHideTimer);
+      chromeHideTimer = setTimeout(() => {
+        if (chrome.matches(':hover')) {
+          pulseSlideshowChrome();
+          return;
+        }
+        chrome.classList.remove('show');
+      }, 2000);
+    }
+    window.__wsPulseSlideshowChrome = pulseSlideshowChrome;
     const overlayEl = document.getElementById('slideshow-overlay');
     if (overlayEl) {
-      let hideT;
-      overlayEl.addEventListener('mousemove', () => {
-        const chrome = document.getElementById('slideshow-chrome');
-        if (chrome) chrome.classList.add('show');
-        clearTimeout(hideT);
-        hideT = setTimeout(() => { if (chrome) chrome.classList.remove('show'); }, 1800);
-      });
+      overlayEl.addEventListener('mousemove', pulseSlideshowChrome);
     }
+    const intervalInput = document.getElementById('slideshow-interval');
+    const bump = (d) => {
+      if (!intervalInput) return;
+      const n = Math.min(60, Math.max(1, (parseInt(intervalInput.value, 10) || 4) + d));
+      intervalInput.value = n;
+    };
+    const down = document.getElementById('btn-interval-down');
+    const up = document.getElementById('btn-interval-up');
+    if (down) down.addEventListener('click', () => bump(-1));
+    if (up) up.addEventListener('click', () => bump(1));
     document.addEventListener('keydown', (e) => {
       const overlay = document.getElementById('slideshow-overlay');
       if (!overlay || overlay.hasAttribute('hidden')) return;
@@ -1597,7 +1633,7 @@
     });
 
     document.getElementById('btn-clear-data').addEventListener('click', async () => {
-      if (state.currentSitemap && confirm(`Clear all scraped data for "${state.currentSitemap.name || state.currentSitemap._id}"?`)) {
+      if (state.currentSitemap && confirm(t('confirmClearData', { name: state.currentSitemap.name || state.currentSitemap._id }))) {
         await AppStorage.clearScrapedData(state.currentSitemap._id);
         openBrowseData();
       }
@@ -1677,7 +1713,7 @@
       });
     }
 
-    elements.browseRecordCountBadge.textContent = `${state.scrapedData.length} records`;
+    elements.browseRecordCountBadge.textContent = t('nRecords', { n: state.scrapedData.length });
     renderDataTablePage();
   }
 
@@ -1691,8 +1727,8 @@
           <td colspan="10">
             <div class="empty-state">
               <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg>
-              <div class="empty-state-title">No Scraped Data Yet</div>
-              <div>Click "Scrape" to start extracting data with this sitemap!</div>
+              <div class="empty-state-title">${t('noScrapedData')}</div>
+              <div>${t('noScrapedHint')}</div>
             </div>
           </td>
         </tr>
@@ -1700,7 +1736,7 @@
       elements.dataPageStart.textContent = '0';
       elements.dataPageEnd.textContent = '0';
       elements.dataPageTotal.textContent = '0';
-      elements.dataPageCurrentNum.textContent = 'Page 1';
+      elements.dataPageCurrentNum.textContent = t('page1');
       return;
     }
 
@@ -1761,7 +1797,7 @@
     elements.dataPageStart.textContent = startIndex + 1;
     elements.dataPageEnd.textContent = endIndex;
     elements.dataPageTotal.textContent = state.filteredData.length;
-    elements.dataPageCurrentNum.textContent = `Page ${page} of ${Math.ceil(state.filteredData.length / pageSize)}`;
+    elements.dataPageCurrentNum.textContent = t('pageOf', { page: page, total: Math.ceil(state.filteredData.length / pageSize) });
   }
 
   // SELECTOR HIERARCHY GRAPH
@@ -1825,14 +1861,14 @@
     const badge = document.getElementById('gallery-count-badge');
     if (!grid) return;
     state.galleryItems = collectGalleryItems(state.scrapedData);
-    if (badge) badge.textContent = state.galleryItems.length + ' images';
+    if (badge) badge.textContent = t('nImages', { n: state.galleryItems.length });
     const cols = (document.getElementById('gallery-columns') || {}).value || 4;
     grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
     const galleryView = document.getElementById('view-gallery');
     if (galleryView) galleryView.setAttribute('data-cols', String(cols));
     grid.innerHTML = '';
     if (state.galleryItems.length === 0) {
-      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">No images found</div><div>Scrape image selectors or URLs ending in jpg/png/webp.</div></div>';
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">' + t('noImages') + '</div><div>' + t('noImagesHint') + '</div></div>';
       return;
     }
     state.galleryItems.forEach((item, idx) => {
@@ -1853,11 +1889,11 @@
       const saveBtn = document.createElement('button');
       saveBtn.type = 'button';
       saveBtn.className = 'btn btn-secondary btn-sm';
-      saveBtn.textContent = 'Save URL';
+      saveBtn.textContent = t('saveUrl');
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.className = 'btn btn-danger btn-sm';
-      delBtn.textContent = 'Delete';
+      delBtn.textContent = t('delete');
       const chk = document.createElement('input');
       chk.type = 'checkbox';
       chk.className = 'gallery-select';
@@ -1900,6 +1936,7 @@
     if (!overlay) return;
     overlay.hidden = false;
     overlay.classList.add('open');
+    if (window.__wsPulseSlideshowChrome) window.__wsPulseSlideshowChrome();
     const play = document.getElementById('btn-slide-play');
     if (play) play.textContent = '▶';
     showSlide();
@@ -1986,7 +2023,7 @@
     if (!sel) return;
     const cols = headers || (state.filteredData[0] ? Object.keys(state.filteredData[0]) : []);
     const current = sel.value;
-    sel.innerHTML = '<option value="">All columns</option>';
+    sel.innerHTML = '<option value="">' + t('allColumns') + '</option>';
     cols.forEach((c) => {
       const opt = document.createElement('option');
       opt.value = c;
@@ -2015,7 +2052,7 @@
   function findNextInData() {
     const re = buildFindRegex();
     const status = document.getElementById('find-replace-status');
-    if (!re) { if (status) status.textContent = 'Enter text to find'; return; }
+    if (!re) { if (status) status.textContent = t('enterFind'); return; }
     const col = (document.getElementById('find-column') || {}).value || '';
     const rows = state.filteredData;
     for (let i = 0; i < rows.length; i++) {
@@ -2030,12 +2067,12 @@
           state.dataPagination.page = Math.floor(idx / state.dataPagination.pageSize) + 1;
           renderDataTablePage();
           highlightFindCell(idx, k);
-          if (status) status.textContent = 'Match in row ' + (idx + 1) + ', column ' + k;
+          if (status) status.textContent = t('matchIn', { row: idx + 1, col: k });
           return;
         }
       }
     }
-    if (status) status.textContent = 'No matches';
+    if (status) status.textContent = t('noMatches');
   }
 
   function highlightFindCell(filteredIndex, col) {
@@ -2055,7 +2092,7 @@
     const re = buildFindRegex();
     const status = document.getElementById('find-replace-status');
     const replacement = (document.getElementById('replace-text') || {}).value || '';
-    if (!re) { if (status) status.textContent = 'Enter text to find'; return; }
+    if (!re) { if (status) status.textContent = t('enterFind'); return; }
     const col = (document.getElementById('find-column') || {}).value || '';
     let count = 0;
     const apply = (row) => {
@@ -2086,7 +2123,7 @@
     }
     if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
     filterAndRenderDataTable();
-    if (status) status.textContent = all ? ('Replaced in ' + count + ' fields') : (count ? 'Replaced 1 match' : 'No matches');
+    if (status) status.textContent = all ? t('replacedFields', { n: count }) : (count ? t('replacedOne') : t('noMatches'));
   }
 
   // Initialize App on DOM Ready

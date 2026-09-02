@@ -729,11 +729,12 @@ tr.selector-row.drop-after td {
   inset: 0;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.35s ease;
+  visibility: hidden;
 }
-.slideshow-overlay:hover .slideshow-chrome,
 .slideshow-chrome.show {
   opacity: 1;
+  visibility: visible;
 }
 .slideshow-icon {
   pointer-events: auto;
