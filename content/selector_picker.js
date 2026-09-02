@@ -494,11 +494,15 @@
         stopPicker();
         sendResponse({ success: true });
       } else if (request.type === 'ELEMENT_PREVIEW') {
-        currentSelector = request.selector || '';
+        if (!isActive) startPicker(request);
+        currentSelector = request.selector || currentSelector;
         updateHighlights();
-        sendResponse({ count: document.querySelectorAll(currentSelector).length });
+        let count = 0;
+        try { count = document.querySelectorAll(currentSelector).length; } catch (e) {}
+        sendResponse({ count: count });
       } else if (request.type === 'DATA_PREVIEW') {
-        currentSelector = request.selector || '';
+        if (!isActive) startPicker(request);
+        currentSelector = request.selector || currentSelector;
         showDataPreview();
         sendResponse({ success: true });
       }

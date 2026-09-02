@@ -840,19 +840,20 @@
 
     // 2. If running in normal browser window / popup / dashboard tab:
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!chrome.runtime.lastError && tabs && tabs.length > 0 && tabs[0].id) {
-          callback(tabs[0].id);
+      const isHttpTab = (t) => t && t.url && /^https?:/i.test(t.url);
+
+      chrome.tabs.query({ lastFocusedWindow: true }, (tabs) => {
+        const localHttp = (tabs || []).filter(isHttpTab);
+        const preferred = localHttp.find(t => t.active) || localHttp[0];
+        if (preferred && preferred.id) {
+          callback(preferred.id);
           return;
         }
 
-        // Fallback to active tab in last focused window
-        chrome.tabs.query({ active: true, lastFocusedWindow: true }, (fallbackTabs) => {
-          if (!chrome.runtime.lastError && fallbackTabs && fallbackTabs.length > 0 && fallbackTabs[0].id) {
-            callback(fallbackTabs[0].id);
-          } else {
-            callback(null);
-          }
+        chrome.tabs.query({}, (allTabs) => {
+          const httpTabs = (allTabs || []).filter(isHttpTab);
+          httpTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+          callback(httpTabs.length ? httpTabs[0].id : null);
         });
       });
       return;
@@ -988,7 +989,13 @@
       if (state.currentSitemap) {
         // Editing existing sitemap metadata
         state.currentSitemap.name = rawName;
-        state.currentSitemap.startUrl = urls;
+        state.currentSitemap.startUrl = urls.map(u => {
+          const t = String(u).trim();
+          if (!t.startsWith('http://') && !t.startsWith('https://') && !t.startsWith('file://')) {
+            return 'https://' + t;
+          }
+          return t;
+        });
         
         const validation = state.currentSitemap.validate();
         if (!validation.isValid) {
@@ -1226,32 +1233,88 @@
             };
             chrome.tabs.onRemoved.addListener(onRemoved);
 
+            const grabOuterHtml = () => {
+              chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                func: () => document.documentElement.outerHTML
+              }, (results) => {
+                const lastErr = chrome.runtime.lastError;
+                cleanup();
+                if (lastErr || !results || !results[0]) {
+                  reject(new Error(lastErr ? lastErr.message : 'Failed to extract HTML from tab'));
+                  return;
+                }
+                try {
+                  const html = results[0].result;
+                  const parser = new DOMParser();
+                  const doc = parser.parseFromString(html, 'text/html');
+                  resolve({ document: doc, url: url });
+                } catch (err) {
+                  reject(err);
+                }
+              });
+            };
+
+            const runPageActionsThenExtract = () => {
+              const selectors = (state.currentSitemap && state.currentSitemap.selectors) || [];
+              const clickSel = selectors.find(s => s.type === 'SelectorElementClick');
+              const scrollSel = selectors.find(s => s.type === 'SelectorElementScroll');
+              const pagClick = selectors.find(s => s.type === 'SelectorPagination' && s.paginationType === 'click');
+              const pagScroll = selectors.find(s => s.type === 'SelectorPagination' && s.paginationType === 'scroll');
+
+              const actions = {};
+              if (clickSel) {
+                actions.click = {
+                  clickElementSelector: clickSel.clickElementSelector || clickSel.selector,
+                  clickType: clickSel.clickType || 'clickMore',
+                  clickDelay: clickSel.clickDelay || 1000
+                };
+              } else if (pagClick) {
+                actions.click = {
+                  clickElementSelector: pagClick.selector,
+                  clickType: 'clickMore',
+                  clickDelay: pagClick.delay || 1000
+                };
+              }
+              if (scrollSel) {
+                actions.scroll = {
+                  scrollElementSelector: scrollSel.scrollElementSelector || '',
+                  scrollDelay: scrollSel.scrollDelay || 1000,
+                  maxScrolls: scrollSel.maxScrolls || 20
+                };
+              } else if (pagScroll) {
+                actions.scroll = {
+                  scrollElementSelector: '',
+                  scrollDelay: pagScroll.delay || 1000,
+                  maxScrolls: pagScroll.maxPages || 20
+                };
+              }
+
+              if (!actions.click && !actions.scroll) {
+                grabOuterHtml();
+                return;
+              }
+
+              chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ['content/scraper_content.js']
+              }, () => {
+                chrome.tabs.sendMessage(tabId, { type: 'EXECUTE_PAGE_ACTIONS', actions }, () => {
+                  if (chrome.runtime.lastError) {
+                    grabOuterHtml();
+                    return;
+                  }
+                  grabOuterHtml();
+                });
+              });
+            };
+
             const extractHtml = () => {
               if (isDone) return;
               isDone = true;
               try { chrome.tabs.onUpdated.removeListener(onUpdated); } catch (e) {}
 
-              setTimeout(() => {
-                chrome.scripting.executeScript({
-                  target: { tabId: tabId },
-                  func: () => document.documentElement.outerHTML
-                }, (results) => {
-                  const lastErr = chrome.runtime.lastError;
-                  cleanup();
-                  if (lastErr || !results || !results[0]) {
-                    reject(new Error(lastErr ? lastErr.message : 'Failed to extract HTML from tab'));
-                    return;
-                  }
-                  try {
-                    const html = results[0].result;
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    resolve({ document: doc, url: url });
-                  } catch (err) {
-                    reject(err);
-                  }
-                });
-              }, 200);
+              setTimeout(runPageActionsThenExtract, 200);
             };
 
             const onUpdated = (updatedTabId, changeInfo) => {

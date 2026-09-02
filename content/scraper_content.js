@@ -5,6 +5,11 @@
 (function () {
   'use strict';
 
+  if (window.__webScraperContentLoaded) {
+    return;
+  }
+  window.__webScraperContentLoaded = true;
+
   function cleanText(text) {
     if (!text) return '';
     return String(text).replace(/\r\n|\r/g, '\n').replace(/[ \t]+/g, ' ').trim();

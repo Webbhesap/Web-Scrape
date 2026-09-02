@@ -206,6 +206,7 @@
       this.regex = data.regex || '';
 
       const typeMeta = SELECTOR_TYPES[this.type] || SELECTOR_TYPES.SelectorText;
+      this.acceptsChildren = !!typeMeta.acceptsChildren;
 
       // Type-specific attributes
       if (this.type === 'SelectorLink') {
