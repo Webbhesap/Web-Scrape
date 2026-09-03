@@ -8,16 +8,35 @@
     if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.query) {
       const isHttpTab = (t) => t && t.url && /^https?:/i.test(t.url);
 
+      // The dashboard itself is usually the ACTIVE tab, so "the active tab"
+      // is almost never the page the user wants to pick from. Pick the most
+      // recently accessed http(s) tab instead, and never the dashboard's own
+      // tab — otherwise the picker silently starts on a background tab and
+      // "Select" appears to do nothing.
+      const pickBest = (tabs, selfTabId) => {
+        const httpTabs = (tabs || []).filter((t) => isHttpTab(t) && t.id !== selfTabId);
+        const active = httpTabs.find((t) => t.active);
+        if (active) return active;
+        httpTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+        return httpTabs[0] || null;
+      };
+
       try {
+        let selfTabId = -1;
+        if (browser.tabs.getCurrent) {
+          try {
+            const selfTab = await browser.tabs.getCurrent();
+            if (selfTab && selfTab.id != null) selfTabId = selfTab.id;
+          } catch (e) { /* not a tab (popup/devtools) */ }
+        }
+
         const tabs = await browser.tabs.query({ lastFocusedWindow: true });
-        const localHttp = (tabs || []).filter(isHttpTab);
-        const preferred = localHttp.find(t => t.active) || localHttp[0];
-        if (preferred && preferred.id) return preferred.id;
+        const preferred = pickBest(tabs, selfTabId);
+        if (preferred && preferred.id != null) return preferred.id;
 
         const allTabs = await browser.tabs.query({});
-        const httpTabs = (allTabs || []).filter(isHttpTab);
-        httpTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
-        return httpTabs.length ? httpTabs[0].id : null;
+        const best = pickBest(allTabs, selfTabId);
+        return best && best.id != null ? best.id : null;
       } catch (e) {
         return null;
       }
@@ -133,7 +152,12 @@
           scopeSelector: scopeSelector
         });
       } catch (e) {
+        // No listener answered — the page most likely predates the
+        // host-permission grant (content scripts never ran on it). Tell the
+        // user instead of failing silently: this is the classic "Select
+        // button does nothing" report on Tor.
         console.warn('Message send warning:', e && e.message);
+        alert(t('pickerNoReceiver'));
       }
       return;
     }

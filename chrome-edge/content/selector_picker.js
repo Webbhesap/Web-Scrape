@@ -24,8 +24,22 @@
   let isElementPreviewActive = false;
   let scopeSelector = '';
   let scopeRoots = [];
+  let lastPointerEvent = null;
+  let rafHoverId = null;
 
   // Helpers
+  /**
+   * CSS identifier escaping that never throws, even when the `CSS` global
+   * is unavailable (some sandboxed frames / test environments). Referencing
+   * `CSS.escape` directly would throw a ReferenceError there and kill the
+   * whole click handler.
+   */
+  function cssEscapeIdent(value) {
+    if (typeof CSS !== 'undefined' && CSS && typeof CSS.escape === 'function') {
+      return CSS.escape(value);
+    }
+    return String(value).replace(/([^a-zA-Z0-9_-])/g, '\\$1');
+  }
   function getCleanClasses(el) {
     if (!el || !el.classList) return [];
     const list = Array.from(el.classList);
@@ -36,11 +50,11 @@
     if (!el || el.nodeType !== 1) return '';
     const tag = el.tagName.toLowerCase();
     if (el.id && !/^[0-9]+$/.test(el.id) && el.id.length < 30) {
-      return `#${CSS.escape ? CSS.escape(el.id) : el.id}`;
+      return `#${cssEscapeIdent(el.id)}`;
     }
     const classes = getCleanClasses(el);
     if (classes.length > 0) {
-      return `${tag}.${classes.slice(0, 2).map(c => CSS.escape ? CSS.escape(c) : c).join('.')}`;
+      return `${tag}.${classes.slice(0, 2).map(cssEscapeIdent).join('.')}`;
     }
     return tag;
   }
@@ -50,12 +64,12 @@
     if (elements.length === 1) {
       const el = elements[0];
       if (el.id && !/^[0-9]+$/.test(el.id) && el.id.length < 30) {
-        return `#${CSS.escape ? CSS.escape(el.id) : el.id}`;
+        return `#${cssEscapeIdent(el.id)}`;
       }
       const classes = getCleanClasses(el);
       const tag = el.tagName.toLowerCase();
       if (classes.length > 0) {
-        const classSel = `.${classes.map(c => CSS.escape ? CSS.escape(c) : c).join('.')}`;
+        const classSel = `.${classes.map(cssEscapeIdent).join('.')}`;
         if (document.querySelectorAll(classSel).length === 1) {
           return classSel;
         }
@@ -75,7 +89,7 @@
     const allSameTag = elements.every(el => el.tagName.toLowerCase() === firstTag);
 
     if (commonClasses.length > 0) {
-      const classSel = `.${commonClasses.map(c => CSS.escape ? CSS.escape(c) : c).join('.')}`;
+      const classSel = `.${commonClasses.map(cssEscapeIdent).join('.')}`;
       return allSameTag ? `${firstTag}${classSel}` : classSel;
     }
 
@@ -244,7 +258,19 @@
 
   function onMouseMove(e) {
     if (!isActive) return;
+    // Coalesce mousemove work into one update per frame — keeps hovering
+    // smooth on large pages where getBoundingClientRect + tooltip writes
+    // used to run for every single event (dozens per frame).
+    lastPointerEvent = e;
+    if (rafHoverId !== null) return;
+    rafHoverId = (window.requestAnimationFrame || function (cb) { setTimeout(cb, 16); })(() => {
+      rafHoverId = null;
+      handleHover(lastPointerEvent);
+    });
+  }
 
+  function handleHover(e) {
+    if (!e) return;
     // Ignore events inside picker toolbar
     if (containerEl && containerEl.contains(e.target)) {
       if (currentHoveredElement) {
@@ -256,6 +282,7 @@
     }
 
     const target = e.target;
+    if (!target || target.nodeType !== 1) return;
     if (!isInsideScope(target)) {
       if (currentHoveredElement) {
         currentHoveredElement.classList.remove('ws-hover-highlight');
@@ -407,15 +434,15 @@
     let previewRowsHtml = '';
     elements.slice(0, 100).forEach((el, idx) => {
       const text = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
-      const href = el.getAttribute('href') || el.getAttribute('data-href') || '';
-      const src = el.getAttribute('src') || el.getAttribute('data-src') || '';
-      
+      const href = el.getAttribute && (el.getAttribute('href') || el.getAttribute('data-href')) || '';
+      const src = el.getAttribute && (el.getAttribute('src') || el.getAttribute('data-src')) || '';
+
       previewRowsHtml += `
         <tr>
           <td style="color:#94a3b8;width:50px;">${idx + 1}</td>
           <td>${escapeHtml(text.substring(0, 150))}</td>
-          ${href ? `<td><span style="color:#38bdf8;">${escapeHtml(href)}</span></td>` : ''}
-          ${src ? `<td><span style="color:#a855f7;">${escapeHtml(src)}</span></td>` : ''}
+          <td>${href ? `<span style="color:#38bdf8;">${escapeHtml(href)}</span>` : ''}</td>
+          <td>${src ? `<span style="color:#a855f7;">${escapeHtml(src)}</span>` : ''}</td>
         </tr>
       `;
     });
@@ -434,11 +461,12 @@
             <tr>
               <th>#</th>
               <th>Text Content</th>
-              <th>Link / Src</th>
+              <th>Link</th>
+              <th>Src</th>
             </tr>
           </thead>
           <tbody>
-            ${previewRowsHtml || '<tr><td colspan="3" style="text-align:center;color:#94a3b8;">No elements found</td></tr>'}
+            ${previewRowsHtml || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;">No elements found</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -488,7 +516,13 @@
   }
 
   function startPicker(options = {}) {
-    if (isActive) return;
+    // A picker that is already running must honour the NEW options instead
+    // of ignoring them: the dashboard sends START_PICKER again when the user
+    // re-clicks "Select" or moves to another parent scope, and silently
+    // no-op-ing here made the button look broken.
+    if (isActive) {
+      stopPicker();
+    }
     isActive = true;
     window.__webScraperPickerActive = true;
     currentSelector = options.selector || '';
@@ -530,6 +564,7 @@
   // Listen for messages from background/devtools
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (!request || typeof request.type !== 'string') return;
       if (request.type === 'START_PICKER') {
         startPicker(request);
         sendResponse({ success: true });

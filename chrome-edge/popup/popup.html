@@ -18,24 +18,25 @@
   <div class="popup-body">
     <div class="quick-actions">
       <button class="btn-popup btn-popup-primary" id="btn-open-dashboard">
-        <span>Open Web Scraper App</span>
+        <span data-i18n="popupOpenApp">Open Web Scraper App</span>
       </button>
       <button class="btn-popup btn-popup-secondary" id="btn-scrape-current-tab">
-        <span>Scrape Current Page</span>
+        <span data-i18n="popupScrapeCurrent">Scrape Current Page</span>
       </button>
     </div>
 
-    <div class="section-title">Saved Sitemaps</div>
+    <div class="section-title" data-i18n="popupSavedSitemaps">Saved Sitemaps</div>
     <div class="popup-sitemap-list" id="popup-sitemap-list">
       <!-- Populated via JS -->
     </div>
 
     <div class="popup-devtools-tip">
-      <strong>DevTools Tip:</strong> Press <kbd style="background:#0f172a; padding:1px 4px; border-radius:3px;">F12</kbd> or right-click Inspect anywhere to open the Web Scraper panel tab directly inside Chrome Developer Tools!
+      <span data-i18n="popupDevtoolsTip">DevTools Tip: Press F12 or right-click Inspect anywhere to open the Web Scraper panel tab directly inside Developer Tools!</span>
     </div>
   </div>
 
   <script src="../lib/icons.js"></script>
+  <script src="../lib/i18n.js"></script>
   <script src="../src/engine/UrlRangeExpander.js"></script>
   <script src="../src/models/Selector.js"></script>
   <script src="../src/models/Sitemap.js"></script>

@@ -367,7 +367,10 @@
 
   function renderSitemapsList() {
     const query = (elements.searchSitemapsInput.value || '').toLowerCase().trim();
-    const filtered = state.sitemaps.filter(s => {
+    // Tolerate corrupt storage entries (null/undefined records) instead of
+    // crashing the whole dashboard on the first render.
+    const allSitemaps = (state.sitemaps || []).filter(Boolean);
+    const filtered = allSitemaps.filter(s => {
       const id = (s._id || '').toLowerCase();
       const name = (s.name || '').toLowerCase();
       const urls = (Array.isArray(s.startUrl) ? s.startUrl.join(' ') : String(s.startUrl || '')).toLowerCase();
@@ -795,6 +798,7 @@
   }
 
   function openAddSelector() {
+    if (!state.currentSitemap) return;
     state.editingSelectorId = null;
     if (elements.selectorEditError) {
       elements.selectorEditError.style.display = 'none';
@@ -812,6 +816,7 @@
   }
 
   function openEditSelector(selectorId) {
+    if (!state.currentSitemap) return;
     const sel = state.currentSitemap.getSelectorById(selectorId);
     if (!sel) return;
 
@@ -994,18 +999,45 @@
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
       const isHttpTab = (t) => t && t.url && /^https?:/i.test(t.url);
 
-      chrome.tabs.query({ lastFocusedWindow: true }, (tabs) => {
-        const localHttp = (tabs || []).filter(isHttpTab);
-        const preferred = localHttp.find(t => t.active) || localHttp[0];
-        if (preferred && preferred.id) {
-          callback(preferred.id);
-          return;
-        }
+      // The dashboard itself is usually the ACTIVE tab, so "the active tab"
+      // is almost never the page the user wants to pick from. Pick the most
+      // recently accessed http(s) tab instead, and never the dashboard's own
+      // tab — otherwise the picker silently starts on a background tab and
+      // "Select" appears to do nothing.
+      const pickBest = (tabs, selfTabId) => {
+        const httpTabs = (tabs || []).filter((t) => isHttpTab(t) && t.id !== selfTabId);
+        const active = httpTabs.find((t) => t.active);
+        if (active) return active;
+        httpTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+        return httpTabs[0] || null;
+      };
 
-        chrome.tabs.query({}, (allTabs) => {
-          const httpTabs = (allTabs || []).filter(isHttpTab);
-          httpTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
-          callback(httpTabs.length ? httpTabs[0].id : null);
+      const withSelfId = (cb) => {
+        if (chrome.tabs.getCurrent) {
+          try {
+            chrome.tabs.getCurrent((selfTab) => {
+              cb(selfTab && selfTab.id != null ? selfTab.id : -1);
+            });
+            return;
+          } catch (e) { /* fall through */ }
+        }
+        cb(-1);
+      };
+
+      withSelfId((selfTabId) => {
+        chrome.tabs.query({ lastFocusedWindow: true }, (tabs) => {
+          if (chrome.runtime.lastError) tabs = null;
+          const preferred = pickBest(tabs, selfTabId);
+          if (preferred && preferred.id != null) {
+            callback(preferred.id);
+            return;
+          }
+
+          chrome.tabs.query({}, (allTabs) => {
+            if (chrome.runtime.lastError) allTabs = null;
+            const best = pickBest(allTabs, selfTabId);
+            callback(best && best.id != null ? best.id : null);
+          });
         });
       });
       return;
@@ -1107,17 +1139,28 @@
                 const parentSel = state.currentSitemap.getSelectorById(state.currentParentSelector);
                 if (parentSel && parentSel.selector) scopeSelector = parentSel.selector;
               }
-              chrome.tabs.sendMessage(tabId, {
+
+              const pickerMessage = {
                 type: msgType,
                 selector: selStr,
                 selectorType: selType,
                 multiple: isMult,
                 scopeSelector: scopeSelector
-              }, () => {
-                if (chrome.runtime.lastError) {
-                  console.warn('Message send warning:', chrome.runtime.lastError.message);
-                }
-              });
+              };
+
+              const sendPickerMessage = (warnMissingReceiver) => {
+                chrome.tabs.sendMessage(tabId, pickerMessage, () => {
+                  const lastErr = chrome.runtime && chrome.runtime.lastError;
+                  if (!lastErr) return;
+                  console.warn('Message send warning:', lastErr.message);
+                  if (!warnMissingReceiver) return;
+                  // No listener answered — the page most likely predates the
+                  // host-permission grant (content scripts never ran on it).
+                  // Tell the user instead of failing silently.
+                  alert(t('pickerNoReceiver'));
+                });
+              };
+              sendPickerMessage(true);
             });
           });
         });

@@ -33,7 +33,9 @@
     const clickSelector = selectorConfig.clickElementSelector;
     const clickType = selectorConfig.clickType || 'clickMore';
     const clickDelay = selectorConfig.clickDelay || 1000;
-    const maxClicks = 50;
+    // Hard safety cap: the dashboard can lower it per selector, but never
+    // above this ceiling (a runaway "load more" loop would hang the crawl).
+    const maxClicks = Math.min(parseInt(selectorConfig.maxClicks, 10) || 50, 200);
 
     let clickCount = 0;
     const clickedElements = new Set();

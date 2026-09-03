@@ -6,11 +6,14 @@
   'use strict';
 
   document.addEventListener('DOMContentLoaded', async () => {
-    // Render icon
+    // Render icon + localize static markup
     const logoIcon = document.getElementById('popup-logo-icon');
     if (logoIcon && typeof AppIcons !== 'undefined') {
       logoIcon.innerHTML = AppIcons.get('spider');
     }
+    if (typeof AppI18n !== 'undefined') AppI18n.apply();
+
+    const t = (key) => (typeof AppI18n !== 'undefined' ? AppI18n.t(key) : key);
 
     const openDashboard = async (query) => {
       const url = browser.runtime.getURL('dashboard/dashboard.html') + (query || '');
@@ -43,7 +46,7 @@
     listContainer.innerHTML = '';
 
     if (sitemaps.length === 0) {
-      listContainer.innerHTML = '<div style="color:#64748b; font-size:11px; text-align:center; padding:8px;">No sitemaps created yet.</div>';
+      listContainer.innerHTML = `<div style="color:#64748b; font-size:11px; text-align:center; padding:8px;">${t('popupNoSitemaps')}</div>`;
       return;
     }
 
@@ -53,8 +56,8 @@
       item.innerHTML = `
         <div class="popup-sitemap-name">${escapeHtml(s.name || s._id)}</div>
         <div style="display:flex; gap:4px;">
-          <button class="btn-scrape-sitemap" style="background:#0d9488; color:#fff; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">Scrape</button>
-          <button class="btn-data-sitemap" style="background:#1e293b; color:#94a3b8; border:1px solid #334155; padding:3px 6px; border-radius:4px; font-size:11px; cursor:pointer;">Data</button>
+          <button class="btn-scrape-sitemap" style="background:#0d9488; color:#fff; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">${t('scrape')}</button>
+          <button class="btn-data-sitemap" style="background:#1e293b; color:#94a3b8; border:1px solid #334155; padding:3px 6px; border-radius:4px; font-size:11px; cursor:pointer;">${t('data')}</button>
         </div>
       `;
 

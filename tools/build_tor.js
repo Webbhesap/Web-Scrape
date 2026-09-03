@@ -197,7 +197,7 @@ function transformStorageJs(source) {
             }
             const sitemaps = [];
             for (const k of Object.keys(all)) {
-              if (k.startsWith('sitemap_')) {
+              if (k.startsWith('sitemap_') && all[k]) {
                 sitemaps.push(all[k]);
               }
             }
@@ -214,7 +214,7 @@ function transformStorageJs(source) {
         if (!all) return [];
         const sitemaps = [];
         for (const k of Object.keys(all)) {
-          if (k.startsWith('sitemap_')) {
+          if (k.startsWith('sitemap_') && all[k]) {
             sitemaps.push(all[k]);
           }
         }
@@ -470,6 +470,7 @@ function transformSelectorPickerJs(source) {
     `  // Listen for messages from background/devtools
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (!request || typeof request.type !== 'string') return;
       if (request.type === 'START_PICKER') {
         startPicker(request);
         sendResponse({ success: true });

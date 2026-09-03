@@ -187,7 +187,7 @@
             }
             const sitemaps = [];
             for (const k of Object.keys(all)) {
-              if (k.startsWith('sitemap_')) {
+              if (k.startsWith('sitemap_') && all[k]) {
                 sitemaps.push(all[k]);
               }
             }
