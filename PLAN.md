@@ -35,7 +35,7 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 
 | ID | Özellik | Açıklama | Çaba |
 |----|---------|----------|------|
-| **F1** | **Akıllı CSS Seçici Otogenelizasyon** | Kullanıcı benzer öğeleri tıkladığında daha sağlam, iç içe gelen seçiciler üretmesi için multi-element algılama algoritmasını geliştirme (örnek: listedeki ürün kartları). Şu an iyi, ama dinamik sınıflar ve shadow DOM için optimize edilebilir. TAMAMEN YEREL - herhangi bir dış servis gerekmez. | Orta |
+| **F1** | **Akıllı CSS Seçici Otogenelizasyon ✅** | Kullanıcı benzer öğeleri tıkladığında daha sağlam, iç içe gelen seçiciler üretmesi için multi-element algılama algoritmasını geliştirme (örnek: listedeki ürün kartları). Şu an iyi, ama dinamik sınıflar ve shadow DOM için optimize edilebilir. TAMAMEN YEREL - herhangi bir dış servis gerekmez. | Orta |
 | **F2** | **XPath Seçici Destek** | Kullanıcının custom XPath sorguları yazabilmesi için yeni bir seçici tipi veya uzantısı ekleme. Mevcut `SelectorElementAttribute` UI'sinde bir toggle olabilir. TAMAMEN YEREL - tarayıcı içi XPath motoru kullanılır. | Yüksek |
 | **F3** | **Yerel Oturum Kalıcılığı** | IndexedDB üzerinden sitemap durumunu (ziaret edilen URL'ler, çıkarılan veri, kuyu durumu) tarayıcı yeniden başlatmalarının üzerine koruma. **HİÇBİR BULUT SERVISI YOK** - veriler sadece bu tarayıcıdaki IndexedDB'de saklanır. | Orta |
 | **F4** | **Seçici Şablon Kütüphanesi** | Amazon, eBay, Indeed gibi yaygın siteler için ön tanımlı selector'lar, kullanıcılar tek tıkla içe aktarabilirseki yeni scrpae'lar için kurulum zamanını azaltma. Şablonlar JSON olarak saklanır, buluta yüklenmez. | Orta |
