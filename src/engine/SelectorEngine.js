@@ -385,6 +385,76 @@
       });
       return urls;
     }
+
+    /**
+     * Executes an XPath expression on the provided DOM element / document context.
+     */
+    extractXPath(context, selector) {
+      const xpath = selector.selector || selector.defaultConfig?.xpath || '';
+      const extractAttr = selector.extractAttribute || '';
+      const multiple = selector.multiple;
+      const regex = selector.regex || '';
+      
+      if (!context || !xpath) {
+        return multiple ? [] : '';
+      }
+      
+      try {
+        const doc = context.ownerDocument || context;
+        
+        if (multiple) {
+          const results = [];
+          const result = document.evaluate(xpath, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          for (let i = 0; i < result.snapshotLength; i++) {
+            const node = result.snapshotItem(i);
+            let value = '';
+            if (extractAttr) {
+              value = node.getAttribute(extractAttr) || '';
+            } else {
+              value = node.textContent || node.nodeValue || '';
+            }
+            if (regex) {
+              try {
+                const regExp = new RegExp(regex);
+                const match = String(value).match(regExp);
+                if (match) {
+                  value = match[0];
+                }
+              } catch (e) {
+                // ignore regex errors
+              }
+            }
+            results.push(value);
+          }
+          return results;
+        } else {
+          const result = document.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+          const node = result.snapshotItem(0);
+          if (!node) return '';
+          let value = '';
+          if (extractAttr) {
+            value = node.getAttribute(extractAttr) || '';
+          } else {
+            value = node.textContent || node.nodeValue || '';
+          }
+          if (regex) {
+            try {
+              const regExp = new RegExp(regex);
+              const match = String(value).match(regExp);
+              if (match) {
+                value = match[0];
+              }
+            } catch (e) {
+              // ignore regex errors
+            }
+          }
+          return value;
+        }
+      } catch (e) {
+        console.warn('XPath error:', e);
+        return multiple ? [] : '';
+      }
+    }
   }
 
   return SelectorEngine;
