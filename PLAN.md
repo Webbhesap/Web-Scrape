@@ -72,14 +72,14 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 |----|---------|----------|------|
 | **F16** | **Cross-Browser Uyumluluk Testleri** | Test süitesini Firefox ve Edge davranışları (Manifest V3 farkları, storage API, icon handling) kapsamına genişletme. TAMAMEN YEREL - jsdom ile simülasyon. | Orta |
 | **F17** | **Otomasyon Testleri (Sadece Yerel Araçlar)** | Test otomasyonu için yerel araçlar kullanılarak genişletme. Puppeteer/Playwright **YOK** - sadece test framework'ları (jest/jsdom) kullanılır. | Orta |
-| **F18** | **Property-Based Testing for Selector Generation** | Seçici oluşumu için property-based testing. `hypothesis` **YOK** - sadece deterministic test case'lar kullanılır, hiçbir dış servis yok. | Yüksek |
+| **F18** | **Property-Based Testing for Selector Generation** | Seçici oluşumu için property-based testing. `hypothesis` **YOK** - sadece deterministic test case'lar kullanır, hiçbir dış servis yok. | Yüksek |
 
 ### Faiz 6: Dokumentasyon & Onboarding (Yerel)
 
 | ID | Özellik | Açıklama | Çaba |
 |----|---------|----------|------|
-| **F19** | **Interaktif Quick-Start Eğitimi** | Kullanıcının ilk kez deneyimi için adım adım rehber (Shepherd.js gibi hafif kütüphane ile), kurulum, sitemap oluşturma, scraping yapma ve veri ihracatı covered. TAMAMEN YEREL - JS kitaplığı eklenti içinde. | Düşük |
-| **F20** | **Video Demo Kütüphanesi** | Kısa (30-60 saniye) ekran kaydı demolar en çok kullanılan özellikler için: görsel picker, range expansion, gallery slideshow, CSV ihracatı. **KALDIRILMIŞ** - kullanıcı istemediği için kaldırıldı. | - |
+| **F19** | **[Kaldırıldı] Interaktif Quick-Start Eğitimi** | Kullanıcının ilk kez deneyimi için adım adım rehber (Shepherd.js gibi hafif kütüphane ile), kurulum, sitemap oluşturma, scraping yapma ve veri ihracatı covered. **BUÖZ KALDIRILDI** - kullanıcı istemediği için kaldırıldı. | - |
+| **F20** | **[Kaldırıldı] Video Demo Kütüphanesi** | Kısa (30-60 saniye) ekran kaydı demolar en çok kullanılan özellikler için: görsel picker, range expansion, gallery slideshow, CSV ihracatı. **BUÖZ KALDIRILDI** - kullanıcı istemediği için kaldırıldı. | - |
 | **F21** | **Geliştirici Katkı Rehberi** | Yeni bir selector type ekleme, test suite'ını çalışma, DevTools panel'ını build etme ve PR'lar submit etme hakkında dokümantasyon, inklinting/formatting standartları içeren. TAMAMEN YEREL. | Düşük |
 
 ---
@@ -91,10 +91,10 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 Bu iki özellik, anında kalite-artışlar sunarken kapsamları sınırlı ve mevcut `src/models/Selector.js` ve `dashboard/dashboard.html`/`popup/popup.html` yapıları kullanılarak implement edilebilir. TAMAMEN YEREL - herhangi bir API anahtarı veya bulut servisi gerekmez.
 
 **Aşamalı Eylemler:**
-1. Repo'yu fork/clonelayın ve test süitesinin geçerli olduğundan emin olun: `npm install && npm test` (73 test, hepsi yerel geçmelidir)
+1. Repo'yu fork/clonelayın ve test süitesinin geçerli olduğundan emin olun: `npm install && npm test` (73 test, tamamen yerel - herhangi bir API key veya dış servis gerekmez)
 2. `feature/F1-smart-generalization` gibi bir feature branch oluşturun ve iyileştirmeleri uygulayın
 3. `PLAN.md` ilerleme güncellemelerini güncelleyin, tamamlandıkça sık sık commit'leyin `arena/01a065a0-web-scrape`
-4. PR açarken sadece ilgili dosyaları `git add` ve `git commit` gönderin - tüm repo değil
+4. PR açarken sadece ilgili dosyaları `git add` gönderin - tüm repo değil, sadece özelliği değiştiren dosyalar.
 
 ---
 
@@ -105,7 +105,7 @@ Bu iki özellik, anında kalite-artışlar sunarken kapsamları sınırlı ve me
 - **Push:** `git push origin arena/01a065a0-web-scrape`
 - **Testler:** `npm test` (73 test, tamamen yerel - herhangi bir API key veya dış servis gerekmez)
 - **Panel build:** `npm run build:panel` (dashboard/html'ten `devtools/panel.html`'i yeniden üretir - tamamen yerel)
-- **Önemli:** PR açarken sadece güncellenen dosyaları `git add` gönderin. Tüm repo değil, sadece özelliği değiştiren dosyalar.
+- **Önemli:** PR açarken sadece güncellenen dosyaları `git add` gönderin. Tüm repo değil, sadece changed files gönderin.
 
 ---
 
@@ -117,8 +117,8 @@ Bu plan canlı bir belgedir. Her özellik şu şekilde işlenebilir:
 - **Merged** – düşük-risk/yüksek-değerse olduğu gibi birleştirilebilir
 - **Replaced** – başka bir yerel fikir ile değiştirilebilir
 
-İnceleyin, yeniden sıralayın veya herhangi bir öğeyi genişletin. Birinci faiz öğesini seçin, feature branch oluşturun ve ilk incremental değişikliği uygulayın. Tüm kod tamamen yerel kalır, hiçbir dış servise bağlanmaz.
+İnceleyin, yeniden sıralayın veya herhangi bir öğeyi genişletin. F1 (Akıllı CSS Seçici Otogenelizasyon) gibi birinci faiz öğesini seçin, feature branch oluşturun ve ilk incremental değişikliği uygulayın. Tüm kod tamamen yerel kalır, hiçbir dış servise bağlanmaz.
 
 ---
 
-*Web Scraper uzantısı - tamamen yerel geliştirme planı. Herhangi bir bulut, API veya AI servisi gerekmez.*
+*Web Scraper uzantısı - tamamen yerel geliştirme planı. Herhangi bir bulut, API veya AI servisi gerekmez. F20 (Video Demo Kütüphanesi) ve F19 (Interaktif Quick-Start Eğitimi) özellikleri kullanıcı isteğiyle tamamen kaldırılmıştır.*
