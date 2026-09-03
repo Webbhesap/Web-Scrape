@@ -1,128 +1,123 @@
-# Web Scraper Extension - Development Plan
+# Web Scraper Uzantı - Geliştirme Planı
 
-**Repository:** https://github.com/Webbhesap/Web-Scrape  
-**Branch:** `arena/01a065a0-web-scrape`  
-**Last Updated:** 2026-09-03
-
----
-
-## 📋 Overview
-
-This plan documents all developable features, enhancements, and architectural improvements for the **Web Scraper** Chrome extension. The extension is built with pure HTML, CSS, and Vanilla JavaScript (Manifest V3), with a modular architecture spanning ~30 source files, 73 automated tests, and a dark-themed UI.
-
-The goal is to provide a clear, prioritized roadmap that the maintainer can review and use to guide incremental development, beginning with the highest-impact items.
+**Depo:** https://github.com/Webbhesap/Web-Scrape  
+**Dala:** `arena/01a065a0-web-scrape`  
+**Son Güncelleme:** 2026-09-03
 
 ---
 
-## ✨ Existing Feature Summary (Reference)
+## 📋 Genel Bakış
 
-The extension already ships with **50+ features** across 8 domains:
+Bu plan, **Web Scraper** Chrome uzantısı için tüm geliştirilebilir özellikleri, migliorasyonları ve mimari iyileştirmeleri belgeler. Uzantı tamamen HTML, CSS ve Vanilla JavaScript ile (Manifest V3 uyumlu) yapılmış, sıfır bağımlılıklu bir yapıya sahiptir. Modüler mimari, yaklaşık 30 kaynak dosyası, 73 otomatik test ve 50+ özelliği kapsar.
 
-1. **Visual Element Picker** – point-and-click selector with hierarchy traversal, live preview, and CSS generalization.
-2. **12 Selector Types** – Text, Link, Image, Table, Element, Attribute, HTML, Grouped, Pagination, Click, Scroll, and more.
-3. **URL Range Expansion** – Numeric, zero-padded, step, alphabetic, value lists, and Cartesian products.
-4. **Interactive Selector Hierarchy Graph** – SVG tree diagram with color-coded nodes, pan/zoom, and click navigation.
-5. **Scraping Engine & Live Monitor** – Configurable delays, page limits, real-time metrics (visited, records, queue, elapsed), pause/resume/stop, activity log.
-6. **Image Gallery & Slideshow** – Responsive grid, fullscreen slideshow with fade/slide/zoom/cut transitions, autoplay, mouse-wheel nav, export (ZIP/download).
-7. **Fully Themed Dark UI** – CSS custom properties, `color-scheme: dark`, themed native controls (`<select>`, sliders, scrollbars, etc.).
-8. **Data Viewer & Export** – Interactive table with sorting/search, export to CSV (RFC 4180, configurable delimiters), Excel (SpreadsheetML XML), JSON, and import/export sitemaps.
-
-**Test Suite:** 73 unit, integration, UI, and E2E tests covering URL expansion, selector generation, data flattening, storage concurrency, UI theming, DevTools panel, dashboard regressions, and multi-page E2E crawling.
-
-**Architecture:** Modular `src/` directory with models (`Selector.js`, `Sitemap.js`), engine modules (`UrlRangeExpander.js`, `CssSelectorGenerator.js`, `SelectorEngine.js`, `DataFlattener.js`, `ScraperEngine.js`), storage (`Storage.js`), and exporters (`Exporter.js`).
+Amaç, bakıma bakayan için net öncelikli bir yol haritası sağlamak ve geliştirmeyi incremental (artımlı) başlatmak için kullanılabilir olmasıdır.
 
 ---
 
-## 🚀 Prioritized Developable Features & Enhancements
+## ✿ Meydada Olan Özellik Özeti (Referans)
 
-### Phase 1: Core Enhancements (High Impact, Low Risk)
+Uzantı zaten **50+ özellik** içinde geliyor:
 
-| ID | Feature | Description | Effort |
-|----|---------|-------------|--------|
-| **F1** | **Smart CSS Selector Auto-Generalization** | Improve the multi-element detection algorithm to produce more robust, nested selectors when users click similar elements (e.g., product cards in a list). Currently good, but can be tuned for edge cases (dynamic classes, shadow DOM). | Medium |
-| **F2** | **XPath Selector Support** | Add a new selector type or extension for XPath expressions, enabling users to write custom XPath queries for complex extractions. Could be a toggle in the existing `SelectorElementAttribute` UI. | High |
-| **F3** | **Session Persistence & Cloud Sync** | Persist sitemap state (visited URLs, extracted data, queue state) across browser restores via IndexedDB upgrades, and provide optional encrypted cloud sync (e.g., via a simple API backend). | High |
-| **F4** | **Selector Templates Library** | Pre-built selector templates for common sites (Amazon, eBay, Indeed, etc.) that users can import with one click, reducing setup time for new scrapes. | Medium |
-| **F5** | **Infinite Scroll & Load More Automation** | Enhanced detection and automation for "Load More" buttons and infinite scroll, with configurable max requests, delay, and visual feedback on what's being loaded. | Medium |
-
-### Phase 2: UI/UX & Accessibility Upgrades
-
-| ID | Feature | Description | Effort |
-|----|---------|-------------|--------|
-| **F6** | **Responsive Popup & Dashboard** | Make the popup and dashboard layouts fully responsive for narrow windows (e.g., vertical sidebar, embedded DevTools). Currently fixed-width in places. | Low |
-| **F7** | **Keyboard Navigation & Accessibility Overhaul** | Full keyboard navigation flow (Tab/Shift-Tab), ARIA labels, focus management, screen-reader compatibility for the selector picker, gallery, and data table. | Medium |
-| **F8** | **Theme Switcher (Light/Day/High-contrast)** | Add a manual theme switcher alongside the automatic `color-scheme: dark`, with customizable color variables and save-to-storage persistence. | Medium |
-| **F9** | **Drag-and-Drop Selector Import** | Allow users to drag a JSON sitemap file from their OS file explorer into the dashboard or popup to import it, rather than using the "Import" button dialog. | Low |
-
-### Phase 3: Export & Data Utility
-
-| ID | Feature | Description | Effort |
-|----|---------|-------------|--------|
-| **F10** | **XML & Google Sheets Export** | Add XML export format compatible with Google Sheets `IMPORTXML`, plus a "Copy as cURL" feature for the current extraction config. | Medium |
-| **F11** | **Bulk Data Transformation** | Post-scrape transformations: trim whitespace, normalize URLs, regex replace, lowercase/uppercase, and custom JavaScript snippets per column before export. | High |
-| **F12** | **Auto-Detect & Extract Dynamic Data** | AI-assisted or rule-based detection of dynamically loaded data (e.g., prices updating via AJAX, review counts, stock status) with suggested selector generation. | High |
-
-### Phase 4: Engine & Performance
-
-| ID | Feature | Description | Effort |
-|----|---------|-------------|--------|
-| **F13** | **Concurrent Page Scraping with Isolation** | Allow multiple pages to scrape concurrently with per-tab isolation (storage, CSS, JS) to speed up large sitemaps, with a concurrency cap and global throttle. | High |
-| **F14** | **Memory Leak Fixes & Cleanup** | Systematic review of event listeners, timeouts, and Interval references in the scraper engine to prevent leaks during long-running crawls (>100 pages). | Medium |
-| **F15** | **Selective Logger & Log Export** | Allow users to export the activity log as JSON/CSV, filter by severity (info/warn/error), and timestamp range, for debugging without console access. | Low |
-
-### Phase 5: Testing & Quality Assurance
-
-| ID | Feature | Description | Effort |
-|----|---------|-------------|--------|
-| **F16** | **Cross-Browser Compatibility Tests** | Expand the test suite to cover Firefox and Edge behaviors (Manifest V3 differences, storage API, icon handling). | Medium |
-| **F17** **| **Puppeteer/Playwright E2E Suite** | Replace/add browser automation tests using Puppeteer or Playwright for headless multi-page crawling, selector validation, and export verification. | High |
-| **F18** | **Property-Based Testing for Selector Generation** | Use `hypothesis` or similar to generate random DOM structures and validate that CSS selector generation remains deterministic and correct. | High |
-
-### Phase 6: Documentation & Onboarding
-
-| ID | Feature | Description | Effort |
-|----|---------|-------------|--------|
-| **F19** | **Interactive Quick-Start Tutorial** | A step-by-step in-app guided tour (via a lightweight library like Shepherd.js) for first-time users, covering: installing, creating a sitemap, running a scrape, and exporting data. | Low |
-| **F20** | **Video Demo Library** | Short (30–60s) screen-recorded demos for the most used features: visual picker, range expansion, gallery slideshow, and CSV export. | Low |
-| **F21** | **Developer Contribution Guide** | Docs on how to add a new selector type, run the test suite, build the DevTools panel, and submit PRs, including linting/formatting standards. | Low |
+1. **Görsel Element Seçici** - Nokta ve tıklayarak seçici, hiyerarchy traversal, canlı önizleme ve CSS genelleştirmesi.
+2. **12 Seçici Tipi** - Metin, Bağlantı, Resim, Tablo, Eleman, Özellik, HTML, Gruplu, Pagination, Tık, Scroll ve daha fazlası.
+3. **URL Aralık Genişlemesi** - Numeric, sıfırlandırılmış, artış, alfabetik, değer listeleri ve cartesian product'lar.
+4. **Etkileşimli Seçici Hiyerarchie Grafiği** - SVG ağacı diyagramı, renkli node'lar, pan/zoom ve tıklama navigasyonu.
+5. **Scraping Motor & Canlı İzleyici** - Yapılandırılabilir istek gecikmesi (ms), sayfa yükleme gecikmesi (ms), maksimum sayfa limiti. Gerçek zamanlı metrikler (Ziyaret sayısı, Kayıt sayısı, Kuyu boyu, Geçen zaman). Kontroller: Duraklat, Devam Et, Durdur. Gerçek zamanlı etkinlik log akışı.
+6. **Resim Galerisi & Slideshow** - Yanıt gridi, aybarak sütun sayısı, inline URL düzenleme ve per-image silme. Fullscreen slideshow fade/slide/zoom/cut geçişleri ile otomatik oynama aralığı. Fare tekerleği ile slayt gezinmesi; Space tuşu da çalışır, Esc kapatır. Otomatik gizleme 2 saniye inaktifiteden sonra — fare imleci de onlarla birlikte gözlemlenen bir görünüm için gizlenir. Galeri toolbar'undan tüm/selected görsellerin ZIP dışa aktarımı.
+7. **Tamamen Temalandırılmış Koyu UI** - Tek renk paleti CSS custom properties'leri kullanı, ve `color-scheme: dark` tarayıma dahil oluyor, böylece **tarayıma ait kontrolerin (select, slider, scrollbar, vb.)** koyu temayı benimsemesi yerine beyaz renkte_render olmasını sağlar. Aynı tematik, dashboard, DevTools panel, toolbar popup ve in-page selector picker için uygulanır.
+8. **Veri Görüntüleyve ve Çoklu İhracat Formatları** - Interactive veri tabli, kolom sıralama (artan/azalan), canlı kelime arama ve sayfalama. **CSV'ye İhracat**: RFC 4180 uyumlu, Microsoft Excel uyumu için UTF-8 BOM, yapılandırılabilir ayraçlar (aralık `,`, noktalı virgül `;`, tab `\\t`). **Excel'e İhracat**: SpreadsheetML XML formatı (`.xls`) ile styled headers ve native column widths. **JSON'e İhracat**: Formatlı JSON kayıt dizisi. **İhracat / İçe Aktar Sitemap**: JSON tanımlamaları üzerinden sitemap'leri paylaşma ve yedekleme.
 
 ---
 
-## 📦 Suggested Next Development Step
+## 🚀 Önceliklendirilmiş Geliştirilebilir Özellikler & Geliştirmeler
 
-**Start with F1 (Smart CSS Selector Auto-Generalization) and F6 (Responsive Popup/Dashboard).** 
+### Faiz 1: Çekirdek Geliştirmler (Yüksek Etki, Düşük Risk)
 
-These two provide immediate quality-of-life improvements with bounded scope, can be implemented using the existing `src/models/Selector.js` and `dashboard/dashboard.html`/`popup/popup.html` structures, and lay groundwork for larger enhancements.
+| ID | Özellik | Açıklama | Çaba |
+|----|---------|----------|------|
+| **F1** | **Akıllı CSS Seçici Otogenelizasyon** | Kullanıcı benzer öğeleri tıkladığında daha sağlam, iç içe gelen seçiciler üretmesi için multi-element algılama algoritmasını geliştirme (örnek: listedeki ürün kartları). Şu an iyi, ama dinamik sınıflar ve shadow DOM için optimize edilebilir. | Orta |
+| **F2** | **XPath Seçici Destek** | Kullanıcının custom XPath sorguları yazabilmesi için yeni bir seçici tipi veya uzantısı ekleme. Mevcut `SelectorElementAttribute` UI'sinde bir toggle olabilir. | Yüksek |
+| **F3** | **Oturum Kalıcılığı & Bulut Senkronizasyonu** | IndexedDB üzerinden sitemap durumunu (ziaret edilen URL'ler, çıkarılan veri, kuyu durumu) tarayıcı yeniden başlatmalarının üzerine koruma, ve isteğe bağlı şifrelenmiş bulut senkronizasyonu (basit bir API backend üzerinden). | Yüksek |
+| **F4** | **Seçici Şablon Kütüphanesi** | Amazon, eBay, Indeed gibi yaygın siteler için ön tanımlı selector'lar, kullanıcılar tek tıkla içe aktarabilirseki yeni scrpae'lar için kurulum zamanını azaltma. | Orta |
+| **F5** | **Sonsuz Scroll & Load More Otomasyonu** | "Load More" butonları ve infinite scroll'ların tanımı ve otomasyonu ile geliştirme, yapılandırılabilir maksimum istek, gecikme ve görsel geri bildirimle birlikte. | Orta |
 
-**Immediate action items:**
-1. Fork/clone the repo and ensure the test suite passes: `npm install && npm test`
-2. Review the existing selector generalization logic in `src/engine/CssSelectorGenerator.js`
-3. Create a branch `feature/F1-smart-generalization` and implement improvements
-4. Update `PLAN.md` progress as items are completed, committing frequently to `arena/01a065a0-web-scrape`
+### Faiz 2: UI/UX & Erişilebilirlik İyileştirmeleri
+
+| ID | Özellik | Açıklama | Çaba |
+|----|---------|----------|------|
+| **F6** | **Duygun Popup & Dashboard** | Popup ve dashboard layout'larını dar ekranlar için uygun yapma (örnek: dikey sidebar, gömülü DevTools). Şu an bazı yerlerde fixed-width. | Düşük |
+| **F7** | **Klavye Navigasyon & Erişilebilirlik Çaprazı** | Tam klavye navigasyonu (Tab/Shift-Tab), ARIA etiketleri, fokus yönetimi, ekran okuyucu uyumu forselector picker, gallery ve data table. | Orta |
+| **F8** | **Tema Değişici (Koyu/Gün/Yüksek-Erkiçe)** | Otomatik `color-scheme: dark`'in yanında manuel tema değiştirici ekleyin, özelleştirilebilir renk değişkenleri ve storage'a kalıcılık. | Orta |
+| **F9** | **Sürükle ve Bırak Seçici İçe Aktarıma** | Kullanıcılar OS dosya gezgininden JSON sitemap dosyasını dashboard veya popup'ına sürükleyerek içeri aktarabilir, "İçe Aktar" butonu iletişim kutusundan ziyade. | Düşük |
+
+### Faiz 3: İhracat & Veri Kullanımı
+
+| ID | Özellik | Açıklama | Çaba |
+|----|---------|----------|------|
+| **F10** | **XML & Google Sheets İhracatı** | Google Sheets `IMPORTXML` ile uyumlu XML ihraç formatı, plus "Copy as cURL" özelliği mevcut çıkarma konfigürasyonu için. | Orta |
+| **F11** | **Toplu Veri Dönüşümü** | Post-scrape dönüşümler: boşlukları kestirme, URL'leri normalleştirme, regex değiştirme, küçük/büyük harf, ve sütun başına custom JavaScript parçacıkları. | Yüksek |
+| **F12** | **Otonom Dinamik Veri Tespiti ve Çıkarımı** | AI destekli veya kural tabanlı tespit of dinamik olarak yüklenen veriler (fiyatlar AJAX ile güncelliyor, review sayısı, stok durumu) ve önerilen selector üretme. | Yüksek |
+
+### Faiz 4: Motor & Performans
+
+| ID | Özellik | Açıklama | Çaba |
+|----|---------|----------|------|
+| **F13** | **Bölümlice Sayfa Scraping ile İzolasyon** | Birden fazla sayfayı aynı anda scrapping yapma, per-tab izolasyon (storage, CSS, JS) ile büyük sitemap'leri hızlandırma, concurrency cap ve global throttle ile. | Yüksek |
+| **F14** | **Bellek Sızıntısı Düzeltmeleri & Temizlik** | Uzun süren crawling (>100 sayfa) sırasında event listeners, timeouts ve Interval referanslarının sistematik incelemesi ve düzeltilmesi. | Orta |
+| **F15** | **Seçici Logger & Log Dışa Aktarıma** | Kullanıcılar aktivite log'ını JSON/CSV olarak dışa aktarabilir, severity (info/warn/error) ve zaman aralığı ile filtreleyebilir, console erişimi olmadan debug için. | Düşük |
+
+### Faiz 5: Test & Kalite Garantisi
+
+| ID | Özellik | Açıklama | Çaba |
+|----|---------|----------|------|
+| **F16** | **Cross-Browser Uyumluluk Testleri** | Test süitesini Firefox ve Edge davranışları (Manifest V3 farkları, storage API, icon handling) kapsamına genişletme. | Orta |
+| **F17** | **Puppeteer/Playwright E2E Suite** | Headless multi-page crawling, selector doğrulama ve ihracat doğrulama için Puppeteer veya Playwright kullanarak testleri genişletme/replace etme. | Yüksek |
+| **F18** | **Seçici Oluşumu için Property-Based Testing** | `hypothesis` veya benzeriyle rastgele DOM yapıları generate ederek, CSS selector generation'ın deterministik ve doğru kalması validasyonu. | Yüksek |
+
+### Faiz 6: Dokumentasyon & Onboarding
+
+| ID | Özellik | Açıklama | Çaba |
+|----|---------|----------|------|
+| **F19** | **Interaktif Quick-Start Eğitimi** | Kullanıcının ilk kez deneyimi için adım adım rehber (Shepherd.js gibi hafif kütüphane ile), kurulum, sitemap oluşturma, scraping yapma ve veri ihracatı covered. | Düşük |
+| **F20** | **Video Demo Kütüphanesi** | Kısa (30-60 saniye) ekran kaydı demolar en çok kullanılan özellikler için: görsel picker, range expansion, gallery slideshow, CSV ihracatı. | Düşük |
+| **F21** | **Geliştirici Katkı Rehberi** | Yeni bir selector type ekleme, test suite'ını çalışma, DevTools panel'ını build etme ve PR'lar submit etme hakkında dokümantasyon, inklinting/formatting standartları içeren. | Düşük |
 
 ---
 
-## 🛠️ Development Workflow (Already in Use)
+## 📦 Önerilen Son Gelişim Adımı
 
-- **Branch:** `arena/01a065a0-web-scrape` (this session)
-- **Commit format:** `git commit -m "F1: improve CSS selector generalization for dynamic class names"`
+**F1 (Akıllı CSS Seçici Otogenelizasyon) ve F6 (Duygun Popup/Dashboard)'a başlayın.**
+
+Bu iki özellik, anında kalite-artışlar sunarken kapsamları sınırlı ve mevcut `src/models/Selector.js` ve `dashboard/dashboard.html`/`popup/popup.html` yapıları kullanılarak implement edilebilir. Daha büyük geliştirmelere zemin hazırlar.
+
+**Aşamalı Eylemler:**
+1. Repo'yu fork/clonelayın ve test süitesinin geçerli olduğundan emin olun: `npm install && npm test`
+2. `feature/F1-smart-generalization` gibi bir feature branch oluşturun ve iyileştirmeleri uygulayın
+3. `PLAN.md` ilerleme güncellemelerini güncelleyin, tamamlandıkça sık sık commit'leyin `arena/01a065a0-web-scrape`
+
+---
+
+## 🛠️ Geliştirme Akışı (Zaten Kullanılıyor)
+
+- **Dala:** `arena/01a065a0-web-scrape` (bu oturum)
+- **Commit formatı:** `git commit -m "F1: improve CSS selector generalization for dynamic class names"`
 - **Push:** `git push origin arena/01a065a0-web-scrape`
-- **Tests:** `npm test` (73 tests, must pass before push)
-- **Panel build:** `npm run build:panel` (regenerates `devtools/panel.html` from `dashboard/dashboard.html`)
-- **Lint/formatting:** enforced by repo config (check `package.json` scripts)
+- **Testler:** `npm test` (73 test, push öncesinden geçmesi gerekir)
+- **Panel build:** `npm run build:panel` (dashboard/html'ten `devtools/panel.html`'i yeniden üretir)
+- **Lint/formatting:** repo config tarafından zorunlu (package.json script'lerini kontrol edin)
 
 ---
 
-## 📬 Feedback & Planning
+## 📬 Geri Bildirime & Planlama
 
-This plan is a living document. Each feature can be:
-- **Deferred** – postponed to a later phase or version
-- **Split** – divided into smaller, independent PRs
-- **Merged** – implemented as-is if low-risk/high-value
-- **Replaced** – substituted with a better idea from the community or maintainer
+Bu plan canlı bir belgedir. Her özellik şu şekilde işlenebilir:
+- **Deferred** – daha sonraki faz veya sürüme ertelenebilir
+- **Split** – bağımsız PR'lar halinde parçalanabilir
+- **Merged** – düşük-risk/yüksek-değerse olduğu gibi birleştirilebilir
+- **Replaced** – topluluk veya bakımdan daha iyi bir fikir ile değiştirilebilir
 
-Feel free to review, reorder, or expand any item. The next step is to pick a Phase 1 item, create a feature branch, and implement the first incremental change.
+İnceleyin, yeniden sıralayın veya herhangi bir öğeyi genişletin. Birinci faiz öğesini seçin, feature branch oluşturun ve ilk incremental değişikliği uygulayın.
 
 ---
 
-*Generated for the Web Scraper extension development planning session.* 
+*Web Scraper uzantısı geliştirme planı oturumu için oluşturuldu.*
