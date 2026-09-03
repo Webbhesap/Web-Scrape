@@ -84,8 +84,10 @@ The interface uses a single dark palette driven by CSS custom properties, and op
    - Or press <kbd>F12</kbd> (Inspect) on any webpage and select the **Web Scraper** tab in DevTools!
 
 ### In Tor Browser (Firefox ESR):
-A dedicated Firefox-compatible build lives in the [`tor/`](tor/) folder (auto-generated
-from this source tree by `npm run build:tor` — never edit it by hand).
+A dedicated **Firefox-native** build lives in the [`tor/`](tor/) folder (auto-generated
+from this source tree by `npm run build:tor` — never edit it by hand). It targets only
+Firefox/Tor: promise-based `browser.*` APIs with async/await, an event-page background,
+and no `chrome.*` calls at all.
 
 1. Open `about:debugging#/runtime/this-firefox` in Tor Browser.
 2. Click **Load Temporary Add-on…** and select `tor/manifest.json`.

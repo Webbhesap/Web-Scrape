@@ -1,22 +1,35 @@
-# Web Scraper — Tor Browser Build
+# Web Scraper — Tor Browser Build (Firefox native)
 
-This folder contains the **Tor Browser (Firefox ESR) compatible** build of the
+This folder contains the **Tor Browser (Firefox ESR) native** build of the
 extension. It is **auto-generated** from the Chrome/Edge source tree at the
 repository root by `tools/build_tor.js` — do not edit files here directly.
-Make changes in the root tree, then run:
+Make changes in the root tree (or in `tools/tor_native/` for the
+Firefox-specific files), then run:
 
 ```bash
 npm run build:tor
 ```
 
-## Differences from the Chrome build
+## Firefox-native, not a compatibility shim
+
+Unlike a straight copy of the Chrome code, this build targets **only**
+Firefox/Tor and uses the idiomatic WebExtension style throughout:
+
+- the promise-based `browser.*` namespace (no `chrome.*` anywhere — the
+  build fails if a `chrome.` API call slips in),
+- `async`/`await` instead of callback pyramids + `runtime.lastError`,
+- message listeners answer by returning a Promise,
+- a background **event page** (`background.scripts`) instead of a service
+  worker, and `options_ui` instead of `options_page`,
+- `browser_specific_settings.gecko` add-on id for sideloading.
 
 | Area | Chrome/Edge (root) | Tor/Firefox (this folder) |
 |------|--------------------|---------------------------|
+| API namespace | callback-style `chrome.*` | promise-based `browser.*` + async/await |
 | Background | `service_worker` | `background.scripts` event page (Storage.js + background.js) |
 | Options | `options_page` | `options_ui` (open in tab) |
 | Add-on identity | — | `browser_specific_settings.gecko` id |
-| Everything else | identical | identical |
+| Engines / UI / locales | identical | identical |
 
 ## Installing in Tor Browser
 
@@ -51,11 +64,11 @@ the toolbar → gear next to Web Scraper → **Pin to Toolbar**. The DevTools ta
 only registers when DevTools is (re)opened after the extension is running.
 
 **"Missing host permission for the tab"**
-Firefox MV3 treats host permissions as opt-in. The extension now checks this
-at runtime and shows the browser's own permission prompt the first time you
-use the picker or start a scrape — accept it there, or enable *"Access your
-data for all websites"* under `about:addons` → Web Scraper → Permissions.
-Tabs opened *before* the grant may need a reload.
+Firefox MV3 treats host permissions as opt-in. The extension checks this at
+runtime and shows the browser's own permission prompt the first time you use
+the picker or start a scrape — accept it there, or enable *"Access your data
+for all websites"* under `about:addons` → Web Scraper → Permissions. Tabs
+opened *before* the grant may need a reload.
 
 ## Privacy warning
 
