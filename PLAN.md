@@ -39,7 +39,7 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 | **F2** | **XPath Seçici Destek ✅** | Kullanıcının custom XPath sorguları yazabilmesi için yeni bir seçici tipi veya uzantısı ekleme. Mevcut `SelectorElementAttribute` UI'sinde bir toggle olabilir. TAMAMEN YEREL - tarayıcı içi XPath motoru kullanılır. | Yüksek |
 | **F3** | **Yerel Oturum Kalıcılığı** | IndexedDB üzerinden sitemap durumunu (ziaret edilen URL'ler, çıkarılan veri, kuyu durumu) tarayıcı yeniden başlatmalarının üzerine koruma. **HİÇBİR BULUT SERVISI YOK** - veriler sadece bu tarayıcıdaki IndexedDB'de saklanır. | Orta |
 | **F4** | **Seçici Şablon Kütüphanesi ✅** | Amazon, eBay, Indeed gibi yaygın siteler için ön tanımlı selector'lar, kullanıcılar tek tıkla içe aktarabilirseki yeni scrpae'lar için kurulum zamanını azaltma. Şablonlar JSON olarak saklanır, buluta yüklenmez. | Orta |
-| **F5** | **Sonsuz Scroll & Load More Otomasyonu** | "Load More" butonları ve infinite scroll'ların tanımı ve otomasyonu ile geliştirme, yapılandırılabilir maksimum istek, gecikme ve görsel geri bildirimle birlikte. TAMAMEN YEREL. | Orta |
+| **F5** | **Sonsuz Scroll & Load More Otomasyonu ✅** | "Load More" butonları ve infinite scroll'ların tanımı ve otomasyonu ile geliştirme, yapılandırılabilir maksimum istek, gecikme ve görsel geri bildirimle birlikte. TAMAMEN YEREL. | Orta |
 
 ### Faiz 2: UI/UX & Erişilebilirlik İyileştirmeleri (Yerel)
 
