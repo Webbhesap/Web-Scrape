@@ -26,7 +26,8 @@
     SelectorGrouped: { bg: '#701a75', border: '#d946ef', text: '#ffffff', tag: 'GROUP' },
     SelectorPagination: { bg: '#831843', border: '#ec4899', text: '#ffffff', tag: 'PAGE' },
     SelectorElementClick: { bg: '#713f12', border: '#eab308', text: '#ffffff', tag: 'CLICK' },
-    SelectorElementScroll: { bg: '#1e293b', border: '#64748b', text: '#ffffff', tag: 'SCROLL' }
+    SelectorElementScroll: { bg: '#1e293b', border: '#64748b', text: '#ffffff', tag: 'SCROLL' },
+    SelectorXPath: { bg: '#3f2d12', border: '#d97706', text: '#ffffff', tag: 'XPATH' }
   };
 
   class SelectorGraph {
@@ -43,10 +44,16 @@
       this.isDragging = false;
       this.startX = 0;
       this.startY = 0;
+      this._windowHandlers = null;
     }
 
     render() {
       if (!this.container) return;
+      // Remove window listeners left over from a previous graph instance
+      // rendered into the same container (prevents listener accumulation).
+      if (this.container.__wsGraphCleanup) {
+        this.container.__wsGraphCleanup();
+      }
       this.container.innerHTML = '';
       this.container.style.position = 'relative';
       this.container.style.overflow = 'hidden';
@@ -242,19 +249,29 @@
         this.container.style.cursor = 'grabbing';
       });
 
-      window.addEventListener('mousemove', (e) => {
+      const onWindowMouseMove = (e) => {
         if (!this.isDragging) return;
         this.translateX = e.clientX - this.startX;
         this.translateY = e.clientY - this.startY;
         this.updateTransform();
-      });
+      };
 
-      window.addEventListener('mouseup', () => {
+      const onWindowMouseUp = () => {
         if (this.isDragging) {
           this.isDragging = false;
           if (this.container) this.container.style.cursor = 'grab';
         }
-      });
+      };
+
+      window.addEventListener('mousemove', onWindowMouseMove);
+      window.addEventListener('mouseup', onWindowMouseUp);
+
+      this._windowHandlers = { onWindowMouseMove, onWindowMouseUp };
+      this.container.__wsGraphCleanup = () => {
+        window.removeEventListener('mousemove', onWindowMouseMove);
+        window.removeEventListener('mouseup', onWindowMouseUp);
+        delete this.container.__wsGraphCleanup;
+      };
 
       // Mouse wheel zoom
       this.container.addEventListener('wheel', (e) => {

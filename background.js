@@ -33,18 +33,22 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Message router
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (!request || typeof request.type !== 'string') return;
+
   if (request.type === 'OPEN_DASHBOARD') {
     const url = chrome.runtime.getURL('dashboard/dashboard.html');
     chrome.tabs.create({ url: url }, () => {
       if (chrome.runtime.lastError) { /* consume */ }
     });
     sendResponse({ success: true });
-    return true;
+    return; // response sent synchronously; do not keep the channel open
   }
 
-  // Forward picker results to active devtools / dashboard views
-  if (request.type === 'PICKER_RESULT' || request.type === 'PICKER_CANCELLED') {
-    chrome.runtime.sendMessage(request, () => {
+  // Forward picker results from content scripts to devtools/dashboard views.
+  // Mark forwarded copies so views that already received the original
+  // broadcast do not process the same result twice.
+  if ((request.type === 'PICKER_RESULT' || request.type === 'PICKER_CANCELLED') && !request._forwarded) {
+    chrome.runtime.sendMessage(Object.assign({}, request, { _forwarded: true }), () => {
       if (chrome.runtime.lastError) { /* consume */ }
     });
   }

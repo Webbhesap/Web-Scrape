@@ -19,6 +19,9 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // Safety cap so a typo like [1-100000000] cannot freeze the UI.
+  const MAX_EXPANDED_URLS = 100000;
+
   function expandUrl(url) {
     if (!url || typeof url !== 'string') return [];
     
@@ -51,7 +54,9 @@
       for (const prefixSoFar of combinations) {
         for (const val of r.values) {
           nextCombos.push(prefixSoFar + r.prefix + val);
+          if (nextCombos.length >= MAX_EXPANDED_URLS) break;
         }
+        if (nextCombos.length >= MAX_EXPANDED_URLS) break;
       }
       combinations = nextCombos;
     }
@@ -76,11 +81,11 @@
 
       const results = [];
       if (start <= end) {
-        for (let i = start; i <= end; i += step) {
+        for (let i = start; i <= end && results.length < MAX_EXPANDED_URLS; i += step) {
           results.push(padNumber(i, padLength));
         }
       } else {
-        for (let i = start; i >= end; i -= step) {
+        for (let i = start; i >= end && results.length < MAX_EXPANDED_URLS; i -= step) {
           results.push(padNumber(i, padLength));
         }
       }

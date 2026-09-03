@@ -28,6 +28,7 @@
 
       this.queue = [];
       this.visitedUrls = new Set();
+      this.enqueuedKeys = new Set(); // `${parentSelectorId}|${url}` — prevents duplicate queue entries
       this.results = [];
       this.isRunning = false;
       this.isPaused = false;
@@ -91,9 +92,12 @@
       this.isPaused = false;
       this.isStopped = false;
       this.startTime = Date.now();
+      this.endTime = null;
       this.pagesVisited = 0;
       this.results = [];
+      this.queue = [];
       this.visitedUrls.clear();
+      this.enqueuedKeys.clear();
       DataFlattener.resetOrderCounter();
 
       const startUrls = this.sitemap.getExpandedStartUrls();
@@ -225,6 +229,61 @@
       }
     }
 
+    /**
+     * Wraps a flat data record as a leaf node, flattens it, stores the
+     * resulting rows and emits `recordScraped` for each of them.
+     */
+    pushLeafRecord(data, job, currentUrl) {
+      const leafNode = {
+        order: DataFlattener.generateOrderKey(),
+        _meta: { startUrl: job.startUrl, currentUrl: currentUrl },
+        data: data
+      };
+      const flatRows = DataFlattener.flattenRecordTree([leafNode], {}, leafNode._meta);
+      for (const r of flatRows) {
+        this.results.push(r);
+        this.emit('recordScraped', r);
+      }
+    }
+
+    /**
+     * Adds a job to the crawl queue unless the same (parent, url) pair has
+     * already been enqueued or visited.
+     */
+    enqueueJob(jobSpec) {
+      const key = `${jobSpec.parentSelectorId}|${jobSpec.url}`;
+      if (this.enqueuedKeys.has(key) || this.visitedUrls.has(jobSpec.url)) return false;
+      this.enqueuedKeys.add(key);
+      this.queue.push(jobSpec);
+      return true;
+    }
+
+    /**
+     * Extracts link objects for a Link/PopupLink selector and enqueues any
+     * unvisited target pages, inheriting the given record data.
+     */
+    enqueueLinks(context, linkSel, job, baseRecord) {
+      const linkData = this.selectorEngine.extract(context, linkSel);
+      const links = Array.isArray(linkData) ? linkData : (linkData && linkData.href ? [linkData] : []);
+
+      for (const linkObj of links) {
+        if (linkObj && linkObj.href) {
+          const inheritedData = Object.assign({}, baseRecord, {
+            [linkSel.id]: linkObj.text,
+            [`${linkSel.id}-href`]: linkObj.href
+          });
+
+          this.enqueueJob({
+            url: linkObj.href,
+            startUrl: job.startUrl,
+            parentSelectorId: linkSel.id,
+            parentData: inheritedData,
+            depth: job.depth + 1
+          });
+        }
+      }
+    }
+
     async processPageContext(docContext, job, currentUrl) {
       const parentId = job.parentSelectorId || '_root';
       const childSelectors = this.sitemap.getDirectChildSelectors(parentId);
@@ -240,42 +299,27 @@
       const dataSelectors = childSelectors.filter(s => !s.acceptsChildren && s.type !== 'SelectorPagination');
 
       // 1. Process Pagination (enqueue new pages)
+      const pagDepth = job.paginationDepth || 0;
       for (const pagSel of paginationSelectors) {
+        // Respect the per-selector page limit (0 = unlimited). The start page
+        // counts as page 1, so stop once maxPages pages have been chained.
+        if (pagSel.maxPages > 0 && pagDepth + 1 >= pagSel.maxPages) continue;
         const nextUrls = this.selectorEngine.extractPagination(docContext, pagSel);
         for (const nextUrl of nextUrls) {
-          if (!this.visitedUrls.has(nextUrl)) {
-            this.queue.push({
-              url: nextUrl,
-              startUrl: job.startUrl,
-              parentSelectorId: parentId,
-              parentData: Object.assign({}, job.parentData),
-              depth: job.depth + 1
-            });
-          }
+          this.enqueueJob({
+            url: nextUrl,
+            startUrl: job.startUrl,
+            parentSelectorId: parentId,
+            parentData: Object.assign({}, job.parentData),
+            depth: job.depth + 1,
+            paginationDepth: pagDepth + 1
+          });
         }
       }
 
       // 2. Process Direct Link Selectors (enqueue child pages)
       for (const linkSel of linkSelectors) {
-        const linkData = this.selectorEngine.extract(docContext, linkSel);
-        const links = Array.isArray(linkData) ? linkData : (linkData && linkData.href ? [linkData] : []);
-
-        for (const linkObj of links) {
-          if (linkObj && linkObj.href && !this.visitedUrls.has(linkObj.href)) {
-            const inheritedData = Object.assign({}, job.parentData, {
-              [linkSel.id]: linkObj.text,
-              [`${linkSel.id}-href`]: linkObj.href
-            });
-
-            this.queue.push({
-              url: linkObj.href,
-              startUrl: job.startUrl,
-              parentSelectorId: linkSel.id,
-              parentData: inheritedData,
-              depth: job.depth + 1
-            });
-          }
-        }
+        this.enqueueLinks(docContext, linkSel, job, job.parentData);
       }
 
       // 3. Process Container Selectors (Element wrappers)
@@ -293,40 +337,12 @@
             for (const fieldSel of childFields) {
               if (fieldSel.type === 'SelectorLink' || fieldSel.type === 'SelectorPopupLink') {
                 hasChildLink = true;
-                const linkData = this.selectorEngine.extract(itemElement, fieldSel);
-                const links = Array.isArray(linkData) ? linkData : (linkData && linkData.href ? [linkData] : []);
-
-                for (const linkObj of links) {
-                  if (linkObj && linkObj.href && !this.visitedUrls.has(linkObj.href)) {
-                    const inheritedData = Object.assign({}, itemRecord, {
-                      [fieldSel.id]: linkObj.text,
-                      [`${fieldSel.id}-href`]: linkObj.href
-                    });
-
-                    this.queue.push({
-                      url: linkObj.href,
-                      startUrl: job.startUrl,
-                      parentSelectorId: fieldSel.id,
-                      parentData: inheritedData,
-                      depth: job.depth + 1
-                    });
-                  }
-                }
+                this.enqueueLinks(itemElement, fieldSel, job, itemRecord);
               } else if (fieldSel.type === 'SelectorTable') {
                 hasChildTable = true;
                 const tableRows = this.selectorEngine.extractTable(itemElement, fieldSel);
                 for (const tRow of tableRows) {
-                  const combinedRow = Object.assign({}, itemRecord, tRow);
-                  const leafNode = {
-                    order: DataFlattener.generateOrderKey(),
-                    _meta: { startUrl: job.startUrl, currentUrl: currentUrl },
-                    data: combinedRow
-                  };
-                  const flatRows = DataFlattener.flattenRecordTree([leafNode], {}, leafNode._meta);
-                  for (const r of flatRows) {
-                    this.results.push(r);
-                    this.emit('recordScraped', r);
-                  }
+                  this.pushLeafRecord(Object.assign({}, itemRecord, tRow), job, currentUrl);
                 }
               } else if (fieldSel.type === 'SelectorElement') {
                 // Nested element containers
@@ -335,38 +351,18 @@
                 for (const subEl of subElements) {
                   const subRecord = Object.assign({}, itemRecord);
                   for (const subSel of subChildFields) {
-                    const subVal = this.selectorEngine.extract(subEl, subSel);
-                    subRecord[subSel.id] = subVal;
+                    subRecord[subSel.id] = this.selectorEngine.extract(subEl, subSel);
                   }
-                  const leafNode = {
-                    order: DataFlattener.generateOrderKey(),
-                    _meta: { startUrl: job.startUrl, currentUrl: currentUrl },
-                    data: subRecord
-                  };
-                  const flatRows = DataFlattener.flattenRecordTree([leafNode], {}, leafNode._meta);
-                  for (const r of flatRows) {
-                    this.results.push(r);
-                    this.emit('recordScraped', r);
-                  }
+                  this.pushLeafRecord(subRecord, job, currentUrl);
                 }
               } else {
-                const val = this.selectorEngine.extract(itemElement, fieldSel);
-                itemRecord[fieldSel.id] = val;
+                itemRecord[fieldSel.id] = this.selectorEngine.extract(itemElement, fieldSel);
               }
             }
 
             // If this item container is not forwarded to child links or expanded by tables/nested containers, emit leaf record
             if (!hasChildLink && !hasChildTable && !childFields.some(f => f.type === 'SelectorElement')) {
-              const leafNode = {
-                order: DataFlattener.generateOrderKey(),
-                _meta: { startUrl: job.startUrl, currentUrl: currentUrl },
-                data: itemRecord
-              };
-              const flatRows = DataFlattener.flattenRecordTree([leafNode], {}, leafNode._meta);
-              for (const r of flatRows) {
-                this.results.push(r);
-                this.emit('recordScraped', r);
-              }
+              this.pushLeafRecord(itemRecord, job, currentUrl);
             }
           }
         }
@@ -382,35 +378,15 @@
             hasTable = true;
             const tableRows = this.selectorEngine.extractTable(docContext, dataSel);
             for (const tRow of tableRows) {
-              const combinedRow = Object.assign({}, pageRecord, tRow);
-              const leafNode = {
-                order: DataFlattener.generateOrderKey(),
-                _meta: { startUrl: job.startUrl, currentUrl: currentUrl },
-                data: combinedRow
-              };
-              const flatRows = DataFlattener.flattenRecordTree([leafNode], {}, leafNode._meta);
-              for (const r of flatRows) {
-                this.results.push(r);
-                this.emit('recordScraped', r);
-              }
+              this.pushLeafRecord(Object.assign({}, pageRecord, tRow), job, currentUrl);
             }
           } else {
-            const val = this.selectorEngine.extract(docContext, dataSel);
-            pageRecord[dataSel.id] = val;
+            pageRecord[dataSel.id] = this.selectorEngine.extract(docContext, dataSel);
           }
         }
 
         if (!hasTable) {
-          const leafNode = {
-            order: DataFlattener.generateOrderKey(),
-            _meta: { startUrl: job.startUrl, currentUrl: currentUrl },
-            data: pageRecord
-          };
-          const flatRows = DataFlattener.flattenRecordTree([leafNode], {}, leafNode._meta);
-          for (const r of flatRows) {
-            this.results.push(r);
-            this.emit('recordScraped', r);
-          }
+          this.pushLeafRecord(pageRecord, job, currentUrl);
         }
       }
     }

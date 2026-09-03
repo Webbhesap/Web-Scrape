@@ -345,8 +345,13 @@
       }
 
       if (typeof localStorage !== 'undefined') {
-        const item = localStorage.getItem(`ws_sitemap_${sitemapId}`);
-        return item ? JSON.parse(item) : null;
+        try {
+          const item = localStorage.getItem(`ws_sitemap_${sitemapId}`);
+          return item ? JSON.parse(item) : null;
+        } catch (e) {
+          console.warn('Corrupt sitemap entry in localStorage:', e);
+          return null;
+        }
       }
       return null;
     }
@@ -449,7 +454,7 @@
               return;
             }
             const entry = res[`data_${sitemapId}`];
-            resolve(entry ? entry.records : []);
+            resolve((entry && Array.isArray(entry.records)) ? entry.records : []);
           });
         });
       }
@@ -461,7 +466,7 @@
             const req = tx.objectStore(STORE_DATA).get(sitemapId);
             req.onsuccess = () => {
               const res = req.result;
-              resolve(res ? res.records : []);
+              resolve((res && Array.isArray(res.records)) ? res.records : []);
             };
             req.onerror = () => resolve([]);
           } catch (e) {

@@ -76,7 +76,9 @@
     // Listen for picker messages from background / content scripts
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener((message) => {
-        if (message.type === 'PICKER_RESULT') {
+        // The background worker re-broadcasts picker results with a
+        // `_forwarded` flag; skip those to avoid handling duplicates.
+        if (message && message.type === 'PICKER_RESULT' && !message._forwarded) {
           if (elements.fieldSelectorCss) {
             elements.fieldSelectorCss.value = message.selector;
           }
@@ -508,7 +510,8 @@
             SelectorText: 'typeText', SelectorLink: 'typeLink', SelectorPopupLink: 'typePopup',
             SelectorImage: 'typeImage', SelectorTable: 'typeTable', SelectorElement: 'typeElement',
             SelectorElementAttribute: 'typeAttr', SelectorHTML: 'typeHtml', SelectorGrouped: 'typeGrouped',
-            SelectorPagination: 'typePagination', SelectorElementClick: 'typeClick', SelectorElementScroll: 'typeScroll'
+            SelectorPagination: 'typePagination', SelectorElementClick: 'typeClick', SelectorElementScroll: 'typeScroll',
+            SelectorXPath: 'typeXPath'
           }[sel.type] || 'typeText')}</span>
         </td>
         <td>
@@ -637,6 +640,7 @@
       case 'SelectorPagination': return 'badge-page';
       case 'SelectorElementClick': return 'badge-click';
       case 'SelectorElementScroll': return 'badge-scroll';
+      case 'SelectorXPath': return 'badge-html';
       default: return 'badge-text';
     }
   }
@@ -761,6 +765,7 @@
     else if (type === 'SelectorPagination') elements.optPagination.style.display = 'block';
     else if (type === 'SelectorElementClick') elements.optClick.style.display = 'block';
     else if (type === 'SelectorElementScroll') elements.optScroll.style.display = 'block';
+    else if (type === 'SelectorXPath') elements.optAttribute.style.display = 'block';
 
     // Default multiple checkboxes
     if (type === 'SelectorElement' || type === 'SelectorTable' || type === 'SelectorPagination' || type === 'SelectorElementClick' || type === 'SelectorElementScroll') {
@@ -826,6 +831,8 @@
       elements.fieldScrollElementSel.value = sel.scrollElementSelector || '';
       elements.fieldScrollDelay.value = sel.scrollDelay || 1000;
       elements.fieldScrollMax.value = sel.maxScrolls || 20;
+    } else if (sel.type === 'SelectorXPath') {
+      elements.fieldExtractAttribute.value = sel.extractAttribute || '';
     }
 
     renderParentSelectorsCheckboxes(sel.parentSelectors);
@@ -913,6 +920,8 @@
       selData.scrollElementSelector = elements.fieldScrollElementSel.value.trim();
       selData.scrollDelay = parseInt(elements.fieldScrollDelay.value, 10) || 1000;
       selData.maxScrolls = parseInt(elements.fieldScrollMax.value, 10) || 20;
+    } else if (selData.type === 'SelectorXPath') {
+      selData.extractAttribute = elements.fieldExtractAttribute.value.trim();
     }
 
     const selectorInstance = new Selector(selData);
@@ -1231,9 +1240,17 @@
     const original = await AppStorage.getSitemap(sitemapId);
     if (!original) return;
 
-    const newId = `${original._id}_copy`;
+    // Find a free id so cloning the same sitemap repeatedly never overwrites
+    // a previous copy (map _copy, _copy2, _copy3, ...).
+    const baseId = original._id;
+    let newId = `${baseId}_copy`;
+    let suffix = 2;
+    while (await AppStorage.getSitemap(newId)) {
+      newId = `${baseId}_copy${suffix++}`;
+    }
+
     original._id = newId;
-    original.name = `${original.name || original._id} (Copy)`;
+    original.name = `${original.name || baseId} (Copy${suffix > 2 ? ' ' + (suffix - 1) : ''})`;
     await AppStorage.saveSitemap(original);
     await loadSitemaps();
   }
@@ -1278,8 +1295,19 @@
   async function startScraping() {
     if (!state.currentSitemap) return;
 
-    const requestInterval = parseInt(document.getElementById('scrape-request-interval').value, 10) || 2000;
-    const pageLoadDelay = parseInt(document.getElementById('scrape-page-delay').value, 10) || 2000;
+    // Guard against double-start: a second engine would race the first one
+    // and corrupt the metrics/results of the running crawl.
+    if (state.scraperEngine && state.scraperEngine.isRunning) {
+      logScrape(t('scrapeAlreadyRunning'), 'error');
+      return;
+    }
+
+    // Number.isFinite guards let an explicit 0 pass through (|| would
+    // silently replace 0 with the default and force an unwanted delay).
+    const parsedInterval = parseInt(document.getElementById('scrape-request-interval').value, 10);
+    const parsedPageDelay = parseInt(document.getElementById('scrape-page-delay').value, 10);
+    const requestInterval = Number.isFinite(parsedInterval) && parsedInterval >= 0 ? parsedInterval : 2000;
+    const pageLoadDelay = Number.isFinite(parsedPageDelay) && parsedPageDelay >= 0 ? parsedPageDelay : 2000;
     const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
 
     elements.scrapeLogBox.innerHTML = '';
@@ -2112,10 +2140,9 @@
     if (!files.length) return;
     const zipBytes = await SimpleZip.build(files);
     const blob = new Blob([zipBytes], { type: 'application/zip' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'gallery.zip';
-    a.click();
+    const objectUrl = URL.createObjectURL(blob);
+    triggerDownload(objectUrl, 'gallery.zip');
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
   }
 
   function populateFindColumns(headers) {

@@ -202,6 +202,8 @@
           return this.extractElement(context, selector);
         case 'SelectorElementScroll':
           return this.extractElement(context, selector);
+        case 'SelectorXPath':
+          return this.extractXPath(context, selector);
         default:
           return this.extractText(context, selector);
       }
@@ -390,66 +392,48 @@
      * Executes an XPath expression on the provided DOM element / document context.
      */
     extractXPath(context, selector) {
-      const xpath = selector.selector || selector.defaultConfig?.xpath || '';
+      const xpath = selector.selector || (selector.defaultConfig && selector.defaultConfig.xpath) || '';
       const extractAttr = selector.extractAttribute || '';
       const multiple = selector.multiple;
       const regex = selector.regex || '';
-      
+
       if (!context || !xpath) {
         return multiple ? [] : '';
       }
-      
+
+      const nodeValue = (node) => {
+        if (!node) return '';
+        let value = '';
+        if (extractAttr && typeof node.getAttribute === 'function') {
+          value = node.getAttribute(extractAttr) || '';
+        } else {
+          value = node.textContent || node.nodeValue || '';
+        }
+        return applyRegex(value, regex);
+      };
+
       try {
         const doc = context.ownerDocument || context;
-        
+        // Resolve evaluate() and XPathResult from the document's own window so
+        // this works in extension pages, content scripts, and jsdom tests alike.
+        const view = doc.defaultView || (typeof window !== 'undefined' ? window : null);
+        const XPR = (view && view.XPathResult) || (typeof XPathResult !== 'undefined' ? XPathResult : null);
+        if (typeof doc.evaluate !== 'function' || !XPR) {
+          console.warn('XPath evaluation is not supported in this environment.');
+          return multiple ? [] : '';
+        }
+
         if (multiple) {
           const results = [];
-          const result = document.evaluate(xpath, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          const result = doc.evaluate(xpath, context, null, XPR.ORDERED_NODE_SNAPSHOT_TYPE, null);
           for (let i = 0; i < result.snapshotLength; i++) {
-            const node = result.snapshotItem(i);
-            let value = '';
-            if (extractAttr) {
-              value = node.getAttribute(extractAttr) || '';
-            } else {
-              value = node.textContent || node.nodeValue || '';
-            }
-            if (regex) {
-              try {
-                const regExp = new RegExp(regex);
-                const match = String(value).match(regExp);
-                if (match) {
-                  value = match[0];
-                }
-              } catch (e) {
-                // ignore regex errors
-              }
-            }
-            results.push(value);
+            results.push(nodeValue(result.snapshotItem(i)));
           }
           return results;
-        } else {
-          const result = document.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-          const node = result.snapshotItem(0);
-          if (!node) return '';
-          let value = '';
-          if (extractAttr) {
-            value = node.getAttribute(extractAttr) || '';
-          } else {
-            value = node.textContent || node.nodeValue || '';
-          }
-          if (regex) {
-            try {
-              const regExp = new RegExp(regex);
-              const match = String(value).match(regExp);
-              if (match) {
-                value = match[0];
-              }
-            } catch (e) {
-              // ignore regex errors
-            }
-          }
-          return value;
         }
+
+        const result = doc.evaluate(xpath, context, null, XPR.FIRST_ORDERED_NODE_TYPE, null);
+        return nodeValue(result.singleNodeValue);
       } catch (e) {
         console.warn('XPath error:', e);
         return multiple ? [] : '';

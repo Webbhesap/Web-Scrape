@@ -258,6 +258,8 @@
         this.scrollElementSelector = data.scrollElementSelector || '';
         this.scrollDelay = parseInt(data.scrollDelay, 10) || 1000;
         this.maxScrolls = parseInt(data.maxScrolls, 10) || 20;
+      } else if (this.type === 'SelectorXPath') {
+        this.extractAttribute = data.extractAttribute || '';
       }
     }
 
@@ -333,6 +335,8 @@
         obj.scrollElementSelector = this.scrollElementSelector;
         obj.scrollDelay = this.scrollDelay;
         obj.maxScrolls = this.maxScrolls;
+      } else if (this.type === 'SelectorXPath') {
+        if (this.extractAttribute) obj.extractAttribute = this.extractAttribute;
       }
 
       return obj;

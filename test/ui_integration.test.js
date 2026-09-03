@@ -83,7 +83,7 @@ test('UI Integration - Dashboard HTML loads, parses scripts and initializes clea
 
   // Check selector types dropdown
   const selectorTypeSelect = document.getElementById('field-selector-type');
-  assert.equal(selectorTypeSelect.options.length, 12, 'Should have all 12 Web Scraper selector types');
+  assert.equal(selectorTypeSelect.options.length, 13, 'Should have all 13 Web Scraper selector types (12 CSS based + XPath)');
 
   assert.equal(typeof window.Selector, 'function', 'Selector must be a constructor in the browser global');
   assert.ok(window.Selector.SELECTOR_TYPES && window.Selector.SELECTOR_TYPES.SelectorText);
