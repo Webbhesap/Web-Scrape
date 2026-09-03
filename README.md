@@ -83,6 +83,19 @@ The interface uses a single dark palette driven by CSS custom properties, and op
    - Click the **Web Scraper** extension icon in your browser toolbar.
    - Or press <kbd>F12</kbd> (Inspect) on any webpage and select the **Web Scraper** tab in DevTools!
 
+### In Tor Browser (Firefox ESR):
+A dedicated Firefox-compatible build lives in the [`tor/`](tor/) folder (auto-generated
+from this source tree by `npm run build:tor` — never edit it by hand).
+
+1. Open `about:debugging#/runtime/this-firefox` in Tor Browser.
+2. Click **Load Temporary Add-on…** and select `tor/manifest.json`.
+3. After installing, open `about:addons` → Web Scraper → **Permissions** and enable
+   *"Access your data for all websites"* (Firefox MV3 does not grant `<all_urls>` automatically).
+
+See [`tor/README.md`](tor/README.md) for permanent installation (`.xpi`), the exact
+differences from the Chrome build, and an important privacy/fingerprinting warning —
+the Tor Project generally advises against adding extensions to Tor Browser.
+
 ---
 
 ## 💻 Standalone Dashboard / Preview

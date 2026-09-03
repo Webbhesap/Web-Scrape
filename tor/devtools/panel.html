@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<!-- AUTO-GENERATED from dashboard/dashboard.html by tools/build_panel.js. Do not edit directly. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Scraper - DevTools Panel</title>
+  <link rel="stylesheet" href="../dashboard/dashboard.css">
+  <link rel="stylesheet" href="panel.css">
+  <link rel="icon" type="image/png" href="../icons/icon32.png">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-left">
+      <div class="brand-logo">
+        <span id="logo-icon"></span>
+        <span>Web Scraper</span>
+      </div>
+
+      <!-- Sitemaps dropdown -->
+      <div class="nav-dropdown" id="dropdown-sitemaps">
+        <button class="nav-dropdown-btn" id="btn-dropdown-sitemaps">
+          <span data-i18n="sitemaps">Sitemaps</span>
+          <span class="icon-chevron-down"></span>
+        </button>
+        <div class="nav-dropdown-content">
+          <a class="dropdown-item" id="nav-sitemaps-list">
+            <span class="icon-folder"></span>
+            <span data-i18n="sitemaps">Sitemaps</span>
+          </a>
+          <div class="dropdown-divider"></div>
+          <a class="dropdown-item" id="nav-create-sitemap">
+            <span class="icon-plus"></span>
+            <span data-i18n="createSitemap">Create Sitemap</span>
+          </a>
+          <a class="dropdown-item" id="nav-import-sitemap">
+            <span class="icon-upload"></span>
+            <span data-i18n="importSitemap">Import Sitemap</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Current Sitemap dropdown (visible when sitemap selected) -->
+      <div class="nav-dropdown" id="dropdown-current-sitemap" style="display: none;">
+        <button class="nav-dropdown-btn" id="btn-dropdown-current-sitemap">
+          <span id="nav-current-sitemap-title">Sitemap</span>
+          <span class="icon-chevron-down"></span>
+        </button>
+        <div class="nav-dropdown-content">
+          <a class="dropdown-item" id="nav-sitemap-selectors">
+            <span class="icon-layers"></span>
+            <span data-i18n="selectors">Selectors</span>
+          </a>
+          <a class="dropdown-item" id="nav-sitemap-graph">
+            <span class="icon-network"></span>
+            <span data-i18n="selectorGraph">Selector graph</span>
+          </a>
+          <a class="dropdown-item" id="nav-sitemap-meta">
+            <span class="icon-edit"></span>
+            <span data-i18n="editMetadata">Edit metadata</span>
+          </a>
+          <a class="dropdown-item" id="nav-sitemap-scrape">
+            <span class="icon-play"></span>
+            <span data-i18n="scrape">Scrape</span>
+          </a>
+          <a class="dropdown-item" id="nav-sitemap-browse">
+            <span class="icon-table"></span>
+            <span data-i18n="browseData">Browse data</span>
+          </a>
+          <a class="dropdown-item" id="nav-sitemap-gallery">
+            <span class="icon-image"></span>
+            <span data-i18n="imageGallery">Image gallery</span>
+          </a>
+          <a class="dropdown-item" id="nav-sitemap-export-data">
+            <span class="icon-download"></span>
+            <span data-i18n="exportData">Export data</span>
+          </a>
+          <a class="dropdown-item" id="nav-sitemap-export-json">
+            <span class="icon-code"></span>
+            <span data-i18n="exportSitemap">Export sitemap</span>
+          </a>
+          <div class="dropdown-divider"></div>
+          <a class="dropdown-item" id="nav-sitemap-delete" style="color:#f87171;">
+            <span class="icon-trash"></span>
+            <span data-i18n="deleteSitemap">Delete sitemap</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-right">
+      <button class="btn btn-secondary btn-sm" id="btn-lang-toggle" type="button">EN</button>
+      <button class="btn btn-secondary btn-sm" id="btn-quick-new-sitemap">
+        <span class="icon-plus"></span>
+        <span data-i18n="createNewSitemap">Create new sitemap</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hierarchy Breadcrumb Bar (visible when inside Selectors view) -->
+  <div class="breadcrumb-bar" id="breadcrumb-bar" style="display: none;">
+    <span class="breadcrumb-item" data-parent="_root">_root</span>
+  </div>
+
+  <!-- Main Views Container -->
+  <main class="main-container">
+
+    <!-- VIEW: Sitemaps List -->
+    <section class="view-panel active" id="view-sitemaps">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-folder"></span>
+            <span data-i18n="allSitemaps">All Sitemaps</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="search-sitemaps-input" class="form-control" placeholder="Search sitemaps..." style="width:200px; padding:4px 8px; font-size:12px;">
+            <button class="btn btn-primary btn-sm" id="btn-sitemaps-create">
+              <span class="icon-plus"></span>
+              <span>Create Sitemap</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-sitemaps-import">
+              <span class="icon-upload"></span>
+              <span>Import Sitemap</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-sitemaps-export-all">
+              <span class="icon-download"></span>
+              <span data-i18n="exportAll">Export All</span>
+            </button>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="table" id="table-sitemaps">
+            <thead>
+              <tr>
+                <th>Sitemap ID / Name</th>
+                <th>Start URL(s)</th>
+                <th>Selectors</th>
+                <th>Last Modified</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-sitemaps">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Selectors List -->
+    <section class="view-panel" id="view-selectors">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-layers"></span>
+            <span id="selectors-view-title">Selectors</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-primary btn-sm" id="btn-add-selector">
+              <span class="icon-plus"></span>
+              <span>Add new selector</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-view-graph">
+              <span class="icon-network"></span>
+              <span>Selector Graph</span>
+            </button>
+          </div>
+        </div>
+        <div class="drop-root-zone" id="drop-root-zone" data-i18n="dropRootHint">Drop here to move to _root. Drop on a container (Element/Link) to nest. Drop on a sibling to reorder.</div>
+        <div class="table-container">
+          <table class="table" id="table-selectors">
+            <thead>
+              <tr>
+                <th data-i18n="thId">ID</th>
+                <th data-i18n="thSelector">Selector</th>
+                <th data-i18n="thType">Type</th>
+                <th data-i18n="thMultiple">Multiple</th>
+                <th data-i18n="thParents">Parent Selectors</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-selectors">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Add / Edit Selector -->
+    <section class="view-panel" id="view-selector-edit">
+      <div class="card" style="max-width: 850px; margin: 0 auto; width: 100%;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-edit"></span>
+            <span id="selector-edit-title">Add Selector</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="selector-edit-error" style="display:none; background:rgba(244,63,94,0.15); border:1px solid #f43f5e; color:#fecdd3; padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:12px;"></div>
+          <form id="form-selector-edit" novalidate>
+            <div class="form-group">
+              <label class="form-label" for="field-selector-id"><span data-i18n="fieldId">Id</span> <span style="color:#f43f5e;">*</span></label>
+              <input type="text" id="field-selector-id" class="form-control" placeholder="e.g. product_title, item_price, category_link" data-i18n-placeholder="phSelectorId">
+              <div class="form-help" data-i18n="helpId">Unique name identifier for this selector.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="field-selector-type"><span data-i18n="fieldType">Type</span> <span style="color:#f43f5e;">*</span></label>
+              <select id="field-selector-type" class="form-control">
+                <option value="SelectorText" data-i18n="typeText">Text</option>
+                <option value="SelectorLink" data-i18n="typeLink">Link</option>
+                <option value="SelectorPopupLink" data-i18n="typePopup">Link (Popup)</option>
+                <option value="SelectorImage" data-i18n="typeImage">Image</option>
+                <option value="SelectorTable" data-i18n="typeTable">Table</option>
+                <option value="SelectorElement" data-i18n="typeElement">Element (Container)</option>
+                <option value="SelectorElementAttribute" data-i18n="typeAttr">Element attribute</option>
+                <option value="SelectorHTML" data-i18n="typeHtml">HTML</option>
+                <option value="SelectorGrouped" data-i18n="typeGrouped">Grouped</option>
+                <option value="SelectorPagination" data-i18n="typePagination">Pagination</option>
+                <option value="SelectorElementClick" data-i18n="typeClick">Element click</option>
+                <option value="SelectorElementScroll" data-i18n="typeScroll">Element scroll</option>
+                <option value="SelectorXPath" data-i18n="typeXPath">XPath</option>
+              </select>
+              <div class="form-help" id="field-selector-type-desc">Extracts text from element.</div>
+            </div>
+
+            <div class="form-group" id="group-css-selector">
+              <label class="form-label" for="field-selector-css"><span data-i18n="fieldSelector">Selector</span> <span style="color:#f43f5e;">*</span></label>
+              <div class="input-with-button">
+                <input type="text" id="field-selector-css" class="form-control form-control-mono" placeholder="CSS selector (e.g. h1.title, .product-card, a.link)" data-i18n-placeholder="phCss">
+                <button type="button" class="btn btn-warning" id="btn-picker-select">
+                  <span class="icon-crosshair"></span>
+                  <span data-i18n="btnSelect">Select</span>
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-picker-preview">
+                  <span class="icon-eye"></span>
+                  <span data-i18n="btnElPreview">Element preview</span>
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-picker-data-preview">
+                  <span class="icon-table"></span>
+                  <span data-i18n="btnDataPreview">Data preview</span>
+                </button>
+              </div>
+              <div class="form-help" data-i18n="helpCss">Point-and-click on the webpage with "Select" or type a CSS selector manually.</div>
+            </div>
+
+            <!-- TYPE OPTION: Link -->
+            <div class="form-group type-options" id="opt-link" style="display:none;">
+              <label class="form-label" for="field-link-type" data-i18n="linkType">Link type</label>
+              <select id="field-link-type" class="form-control">
+                <option value="linkFromHref" data-i18n="linkFromHref">Link from href attribute</option>
+                <option value="linkFromText" data-i18n="linkFromText">Link from element text</option>
+                <option value="linkFromAttribute" data-i18n="linkFromAttribute">Link from custom attribute (data-href)</option>
+                <option value="linkFromScript" data-i18n="linkFromScript">Link from script</option>
+              </select>
+            </div>
+
+            <!-- TYPE OPTION: Image -->
+            <div class="form-group type-options" id="opt-image" style="display:none;">
+              <label class="form-checkbox-label">
+                <input type="checkbox" id="field-image-download">
+                <span data-i18n="downloadImages">Download image files locally</span>
+              </label>
+            </div>
+
+            <!-- TYPE OPTION: Table -->
+            <div class="form-group type-options" id="opt-table" style="display:none;">
+              <label class="form-label" data-i18n="tableHeaderSel">Table header row selector</label>
+              <input type="text" id="field-table-header-sel" class="form-control form-control-mono" value="thead tr, tr:first-child">
+              <label class="form-label" style="margin-top:8px;" data-i18n="tableDataSel">Table data row selector</label>
+              <input type="text" id="field-table-data-sel" class="form-control form-control-mono" value="tbody tr, tr:not(:first-child)">
+            </div>
+
+            <!-- TYPE OPTION: Attribute -->
+            <div class="form-group type-options" id="opt-attribute" style="display:none;">
+              <label class="form-label" for="field-extract-attribute"><span data-i18n="attrName">Attribute name</span> <span style="color:#f43f5e;">*</span></label>
+              <input type="text" id="field-extract-attribute" class="form-control" placeholder="e.g. href, title, data-id, alt, aria-label" data-i18n-placeholder="phAttr" value="href">
+            </div>
+
+            <!-- TYPE OPTION: HTML -->
+            <div class="form-group type-options" id="opt-html" style="display:none;">
+              <label class="form-checkbox-label">
+                <input type="checkbox" id="field-html-outer">
+                <span data-i18n="extractOuterHtml">Extract outer HTML (includes the selected tag itself)</span>
+              </label>
+            </div>
+
+            <!-- TYPE OPTION: Grouped -->
+            <div class="form-group type-options" id="opt-grouped" style="display:none;">
+              <label class="form-label" for="field-grouped-delimiter" data-i18n="delimiter">Delimiter</label>
+              <input type="text" id="field-grouped-delimiter" class="form-control" value=", ">
+            </div>
+
+            <!-- TYPE OPTION: Pagination -->
+            <div class="form-group type-options" id="opt-pagination" style="display:none;">
+              <label class="form-label" for="field-pagination-type" data-i18n="paginationType">Pagination type</label>
+              <select id="field-pagination-type" class="form-control">
+                <option value="link" data-i18n="pagLink">Link (follows Next page URLs)</option>
+                <option value="click" data-i18n="pagClick">Click (clicks Next button with AJAX)</option>
+                <option value="scroll" data-i18n="pagScroll">Scroll (infinite scroll)</option>
+              </select>
+              <label class="form-label" for="field-pagination-max" style="margin-top:8px;" data-i18n="maxPages">Max pages limit (0 for unlimited)</label>
+              <input type="number" id="field-pagination-max" class="form-control" value="0" min="0">
+            </div>
+
+            <!-- TYPE OPTION: Element Click -->
+            <div class="form-group type-options" id="opt-click" style="display:none;">
+              <label class="form-label" for="field-click-element-sel"><span data-i18n="clickElSel">Click element selector</span> <span style="color:#f43f5e;">*</span></label>
+              <input type="text" id="field-click-element-sel" class="form-control form-control-mono" placeholder="e.g. button.load-more, a.next-page" data-i18n-placeholder="phClickSel">
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:8px;">
+                <div>
+                  <label class="form-label" data-i18n="clickType">Click type</label>
+                  <select id="field-click-type" class="form-control">
+                    <option value="clickMore" data-i18n="clickMore">Click More (click until no more buttons)</option>
+                    <option value="clickOnce" data-i18n="clickOnce">Click Once (click each button once)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label" data-i18n="clickDelay">Click delay (ms)</label>
+                  <input type="number" id="field-click-delay" class="form-control" value="1000" min="0">
+                </div>
+              </div>
+              <div style="margin-top:8px;">
+                <label class="form-checkbox-label">
+                  <input type="checkbox" id="field-click-discard-initial">
+                  <span data-i18n="discardInitial">Discard initial elements (only scrape elements loaded after clicks)</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- TYPE OPTION: Element Scroll -->
+            <div class="form-group type-options" id="opt-scroll" style="display:none;">
+              <label class="form-label" for="field-scroll-element-sel" data-i18n="scrollContainer">Scroll container selector (leave empty for window scroll)</label>
+              <input type="text" id="field-scroll-element-sel" class="form-control form-control-mono" placeholder="e.g. div.infinite-container" data-i18n-placeholder="phScrollSel">
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:8px;">
+                <div>
+                  <label class="form-label" data-i18n="scrollDelay">Scroll delay (ms)</label>
+                  <input type="number" id="field-scroll-delay" class="form-control" value="1000" min="100">
+                </div>
+                <div>
+                  <label class="form-label" data-i18n="maxScrolls">Max scrolls limit</label>
+                  <input type="number" id="field-scroll-max" class="form-control" value="20" min="1">
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group" id="group-multiple">
+              <label class="form-checkbox-label">
+                <input type="checkbox" id="field-selector-multiple">
+                <span data-i18n="multipleLabel">Multiple: extract multiple elements / records</span>
+              </label>
+            </div>
+
+            <div class="form-group" id="group-regex">
+              <label class="form-label" for="field-selector-regex" data-i18n="regexLabel">Regex (optional extraction filter)</label>
+              <input type="text" id="field-selector-regex" class="form-control form-control-mono" placeholder="e.g. [0-9]+, \$([0-9\.]+) or [a-zA-Z]+">
+              <div class="form-help" data-i18n="helpRegex">Extracts matched text pattern or capturing group (group 1).</div>
+            </div>
+
+            <div class="form-group" id="group-delay">
+              <label class="form-label" for="field-selector-delay" data-i18n="delayMs">Delay (ms)</label>
+              <input type="number" id="field-selector-delay" class="form-control" value="0" min="0">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label"><span data-i18n="parentSelectors">Parent Selectors</span> <span style="color:#f43f5e;">*</span></label>
+              <div id="parent-selectors-list" style="max-height: 140px; overflow-y: auto; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px;">
+                <!-- Checkboxes populated via JS -->
+              </div>
+              <div class="form-help" data-i18n="helpParents">Select which parent selector(s) this selector belongs to.</div>
+            </div>
+
+            <div style="display:flex; justify-content: flex-end; gap:8px; margin-top:20px;">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-selector-edit" data-i18n="cancel">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-selector" data-i18n="saveSelector">Save selector</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Create / Edit Sitemap Metadata -->
+    <section class="view-panel" id="view-sitemap-meta">
+      <div class="card" style="max-width: 750px; margin: 0 auto; width: 100%;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-edit"></span>
+            <span id="sitemap-meta-title">Create Sitemap</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="sitemap-meta-error" style="display:none; background:rgba(244,63,94,0.15); border:1px solid #f43f5e; color:#fecdd3; padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:12px;"></div>
+          <form id="form-sitemap-meta" novalidate>
+            <div class="form-group">
+              <label class="form-label" for="field-sitemap-id"><span data-i18n="sitemapName">Sitemap name</span> <span style="color:#f43f5e;">*</span></label>
+              <input type="text" id="field-sitemap-id" class="form-control" placeholder="e.g. ecommerce_store, news_articles" data-i18n-placeholder="phSitemapName">
+              <div class="form-help" data-i18n="helpSitemapName">Name of the sitemap (letters, numbers, spaces, hyphens).</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="field-sitemap-urls"><span data-i18n="startUrls">Start URL(s)</span> <span style="color:#f43f5e;">*</span></label>
+              <textarea id="field-sitemap-urls" class="form-control form-control-mono" placeholder="https://example.com/products&#10;https://example.com/page/[1-100]&#10;https://example.com/category/[a-z]" rows="5"></textarea>
+              <div class="form-help" data-i18n="helpStartUrls">Enter one URL per line. Supports ranges like [1-100], zero-padded [001-100], steps [0-100:10], and letters [a-z].</div>
+              <div id="url-range-preview" style="display:none; margin-top:8px; padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; background:rgba(45,212,191,0.06); font-size:12px;">
+                <div style="font-weight:600; color:#2dd4bf; margin-bottom:4px;">
+                  <span data-i18n="urlPreviewTitle">URL expansion preview:</span>
+                  <span id="url-range-count"></span>
+                </div>
+                <div id="url-range-samples" style="font-family:var(--font-mono); font-size:11px; color:#94a3b8; white-space:pre-line;"></div>
+                <div id="url-range-warning" style="display:none; color:#facc15; margin-top:4px;" data-i18n="urlPreviewCap">Warning: expansion reached the 100,000 URL safety cap.</div>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content: flex-end; gap:8px; margin-top:20px;">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-sitemap-meta" data-i18n="cancel">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-sitemap-meta">Create Sitemap</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Import Sitemap -->
+    <section class="view-panel" id="view-sitemap-import">
+      <div class="card" style="max-width: 750px; margin: 0 auto; width: 100%;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-upload"></span>
+            <span data-i18n="importSitemap">Import Sitemap</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="sitemap-import-error" style="display:none; background:rgba(244,63,94,0.15); border:1px solid #f43f5e; color:#fecdd3; padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:12px;"></div>
+          <form id="form-sitemap-import" novalidate>
+            <div class="form-group">
+              <label class="form-label" for="field-import-json"><span data-i18n="sitemapJson">Sitemap JSON</span> <span style="color:#f43f5e;">*</span></label>
+              <textarea id="field-import-json" class="form-control form-control-mono" placeholder='Paste Sitemap JSON here... e.g. {"_id":"mysite","startUrl":["https://..."],"selectors":[...]}' rows="10"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="field-import-id" data-i18n="sitemapNameOverride">Sitemap Name (optional override)</label>
+              <input type="text" id="field-import-id" class="form-control" placeholder="Leave blank to use ID from JSON" data-i18n-placeholder="phImportId">
+            </div>
+
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-top:20px;">
+              <div>
+                <input type="file" id="file-import-json" accept=".json" style="display:none;">
+                <button type="button" class="btn btn-secondary" id="btn-load-json-file">
+                  <span class="icon-folder"></span>
+                  <span data-i18n="loadJsonFile">Load from .json file</span>
+                </button>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-secondary" id="btn-cancel-sitemap-import" data-i18n="cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-sitemap-import" data-i18n="importSitemap">Import Sitemap</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Export Sitemap -->
+    <section class="view-panel" id="view-sitemap-export">
+      <div class="card" style="max-width: 750px; margin: 0 auto; width: 100%;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-code"></span>
+            <span data-i18n="exportSitemapJson">Export Sitemap JSON</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <textarea id="field-export-json" class="form-control form-control-mono" rows="14" readonly></textarea>
+          </div>
+          <div style="display:flex; justify-content: flex-end; gap:8px; margin-top:16px;">
+            <button class="btn btn-secondary" id="btn-copy-sitemap-json">
+              <span class="icon-copy"></span>
+              <span data-i18n="copyClipboard">Copy to clipboard</span>
+            </button>
+            <button class="btn btn-primary" id="btn-download-sitemap-json">
+              <span class="icon-download"></span>
+              <span data-i18n="downloadJsonFile">Download .json file</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Scrape Setup & Live Monitor -->
+    <section class="view-panel" id="view-scrape">
+      <div class="card" id="scrape-setup-card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-play"></span>
+            <span data-i18n="scrapeConfig">Scrape Configuration</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px;">
+            <div class="form-group">
+              <label class="form-label" for="scrape-request-interval" data-i18n="requestInterval">Request interval (ms)</label>
+              <input type="number" id="scrape-request-interval" class="form-control" value="2000" min="0" step="500">
+              <div class="form-help" data-i18n="helpRequestInterval">Delay between visiting URLs (reduces server load).</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scrape-page-delay" data-i18n="pageLoadDelay">Page load delay (ms)</label>
+              <input type="number" id="scrape-page-delay" class="form-control" value="2000" min="0" step="500">
+              <div class="form-help" data-i18n="helpPageDelay">Wait for JavaScript/AJAX rendering on each page.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scrape-max-pages" data-i18n="maxPagesAll">Max pages limit (0 for all)</label>
+              <input type="number" id="scrape-max-pages" class="form-control" value="0" min="0">
+              <div class="form-help" data-i18n="helpMaxPages">Maximum number of pages to scrape.</div>
+            </div>
+          </div>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary" id="btn-start-scraping" style="padding: 10px 24px; font-size: 14px;">
+              <span class="icon-play"></span>
+              <span data-i18n="startScraping">Start scraping</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Scraping Monitor Card -->
+      <div class="card" id="scrape-monitor-card" style="margin-top: 16px;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="badge" id="scrape-status-badge">IDLE</span>
+            <span id="scrape-monitor-title" data-i18n="scrapeMonitor">Scraping Monitor</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-warning btn-sm" id="btn-scrape-pause" style="display:none;">
+              <span class="icon-pause"></span>
+              <span data-i18n="pause">Pause</span>
+            </button>
+            <button class="btn btn-success btn-sm" id="btn-scrape-resume" style="display:none;">
+              <span class="icon-play"></span>
+              <span data-i18n="resume">Resume</span>
+            </button>
+            <button class="btn btn-danger btn-sm" id="btn-scrape-stop" style="display:none;">
+              <span class="icon-square"></span>
+              <span data-i18n="stop">Stop</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-scrape-view-data">
+              <span class="icon-table"></span>
+              <span data-i18n="viewData">View Data</span>
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-value" id="metric-pages">0</div>
+              <div class="metric-label" data-i18n="pagesVisited">Pages Visited</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value" id="metric-records" style="color:#2dd4bf;">0</div>
+              <div class="metric-label" data-i18n="recordsScraped">Records Scraped</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value" id="metric-queue">0</div>
+              <div class="metric-label" data-i18n="queueSize">Queue Size</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value" id="metric-time">00:00</div>
+              <div class="metric-label" data-i18n="elapsedTime">Elapsed Time</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value" id="metric-errors" style="color:#f87171;">0</div>
+              <div class="metric-label" data-i18n="errorsCount">Errors</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;"></div>
+            <div id="scrape-current-url" style="font-family:var(--font-mono); font-size:12px; color:#38bdf8; background:var(--bg-input); padding:6px 10px; border-radius:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">-</div>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <div style="font-size:11px; font-weight:600; color:var(--text-muted);" data-i18n="activityLog">ACTIVITY LOG:</div>
+              <button class="btn btn-secondary btn-sm" id="btn-download-log" type="button">
+                <span class="icon-download"></span>
+                <span data-i18n="downloadLog">Download log</span>
+              </button>
+            </div>
+            <div class="log-box" id="scrape-log-box"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Browse Scraped Data Table -->
+    <section class="view-panel" id="view-browse-data">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-table"></span>
+            <span id="browse-data-title" data-i18n="scrapedData">Scraped Data</span>
+            <span class="badge" id="browse-record-count-badge" style="background: rgba(45, 212, 191, 0.2); color:#2dd4bf; margin-left:8px;">0 records</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="search-data-input" class="form-control" placeholder="Search data..." data-i18n-placeholder="searchData" style="width:200px; padding:4px 8px; font-size:12px;">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-find-replace">
+              <span data-i18n="findReplace">Find / Replace</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-data">
+              <span class="icon-refresh"></span>
+              <span data-i18n="refresh">Refresh</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-copy-data-csv">
+              <span class="icon-copy"></span>
+              <span data-i18n="copyCsv">Copy CSV</span>
+            </button>
+            <button class="btn btn-primary btn-sm" id="btn-export-csv-direct">
+              <span class="icon-download"></span>
+              <span data-i18n="exportCsv">Export CSV</span>
+            </button>
+            <button class="btn btn-success btn-sm" id="btn-export-excel-direct">
+              <span class="icon-download"></span>
+              <span data-i18n="exportExcel">Export Excel</span>
+            </button>
+            <button class="btn btn-danger btn-sm" id="btn-clear-data">
+              <span class="icon-trash"></span>
+              <span data-i18n="clearData">Clear Data</span>
+            </button>
+          </div>
+        </div>
+        <div class="find-replace-bar" id="find-replace-bar">
+          <div class="form-group">
+            <label class="form-label" for="find-text" data-i18n="find">Find</label>
+            <input type="text" id="find-text" class="form-control" placeholder="Find..." data-i18n-placeholder="find">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="replace-text" data-i18n="replace">Replace</label>
+            <input type="text" id="replace-text" class="form-control" placeholder="Replace with..." data-i18n-placeholder="replace">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="find-column" data-i18n="column">Column</label>
+            <select id="find-column" class="form-control"><option value="" data-i18n="allColumns">All columns</option></select>
+          </div>
+          <label class="form-checkbox-label"><input type="checkbox" id="find-case"> <span data-i18n="matchCase">Match case</span></label>
+          <label class="form-checkbox-label"><input type="checkbox" id="find-word"> <span data-i18n="wholeWord">Whole word</span></label>
+          <label class="form-checkbox-label"><input type="checkbox" id="find-regex"> <span data-i18n="regex">Regex</span></label>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-find-next" data-i18n="findNext">Find next</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-replace-one" data-i18n="replace">Replace</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-replace-all" data-i18n="replaceAll">Replace all</button>
+          <span id="find-replace-status" style="font-size:11px;color:var(--text-muted);"></span>
+        </div>
+        <div class="table-container browse-table-scroll">
+          <table class="table" id="table-scraped-data">
+            <thead id="thead-scraped-data">
+              <!-- Rendered dynamically -->
+            </thead>
+            <tbody id="tbody-scraped-data">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-bar" id="data-pagination-bar">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span><span data-i18n="showing">Showing</span> <span id="data-page-start">0</span> <span data-i18n="to">to</span> <span id="data-page-end">0</span> <span data-i18n="of">of</span> <span id="data-page-total">0</span> <span data-i18n="entries">entries</span></span>
+            <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted);">
+              <span data-i18n="rowsPerPage">Rows per page</span>
+              <select id="data-page-size" class="form-control" style="width:auto; padding:2px 6px; font-size:12px;">
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+              </select>
+            </label>
+          </div>
+          <div class="pagination-controls">
+            <button class="btn btn-secondary btn-sm" id="btn-data-prev-page" data-i18n="previous">Previous</button>
+            <span id="data-page-current-num">Page 1</span>
+            <button class="btn btn-secondary btn-sm" id="btn-data-next-page" data-i18n="next">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Image Gallery -->
+    <section class="view-panel" id="view-gallery">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-image"></span>
+            <span data-i18n="imageGalleryTitle">Image Gallery</span>
+            <span class="badge" id="gallery-count-badge" style="background: rgba(168,85,247,0.2); color:#c084fc; margin-left:8px;">0 images</span>
+          </div>
+          <div class="gallery-toolbar">
+            <label class="form-label" style="margin:0;" data-i18n="columns">Columns</label>
+            <input type="range" id="gallery-columns" min="2" max="8" value="4">
+            <span id="gallery-columns-label">4</span>
+            <button class="btn btn-primary btn-sm" id="btn-start-slideshow" data-i18n="startSlideshow">Start slideshow</button>
+            <button class="btn btn-secondary btn-sm" id="btn-gallery-select-all" data-i18n="selectAll">Select all</button>
+            <button class="btn btn-secondary btn-sm" id="btn-gallery-select-none" data-i18n="clearSelection">Clear selection</button>
+            <span class="badge" id="gallery-selected-badge" style="display:none; background:rgba(45,212,191,0.2); color:#2dd4bf;"></span>
+            <button class="btn btn-secondary btn-sm" id="btn-gallery-zip-all" data-i18n="downloadZip">Download ZIP</button>
+            <button class="btn btn-secondary btn-sm" id="btn-gallery-zip-selected" data-i18n="downloadSelected">ZIP selected</button>
+          </div>
+        </div>
+        <div class="gallery-grid" id="gallery-grid" style="grid-template-columns: repeat(4, 1fr);"></div>
+      </div>
+    </section>
+
+    <!-- VIEW: Export Data Options -->
+    <section class="view-panel" id="view-export-data">
+      <div class="card" style="max-width: 700px; margin: 0 auto; width: 100%;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-download"></span>
+            <span data-i18n="exportScraped">Export Scraped Data</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label" data-i18n="csvFormat">CSV Format (Comma-Separated Values)</label>
+            <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+              <select id="export-csv-delimiter" class="form-control" style="width:180px;">
+                <option value="," data-i18n="comma">Comma (,)</option>
+                <option value=";" data-i18n="semicolon">Semicolon (;)</option>
+                <option value="&#9;">Tab (\t)</option>
+              </select>
+              <button class="btn btn-primary" id="btn-download-csv">
+                <span class="icon-download"></span>
+                <span data-i18n="downloadCsvBom">Download CSV (with Excel UTF-8 BOM)</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top:24px; border-top: 1px solid var(--border-color); padding-top:16px;">
+            <label class="form-label" data-i18n="excelFormat">Microsoft Excel (.xls / SpreadsheetML)</label>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;"></p>
+            <button class="btn btn-success" id="btn-download-excel">
+              <span class="icon-download"></span>
+              <span data-i18n="downloadExcel">Download Excel (.xls)</span>
+            </button>
+          </div>
+
+          <div class="form-group" style="margin-top:24px; border-top: 1px solid var(--border-color); padding-top:16px;">
+            <label class="form-label" data-i18n="jsonFormat">JSON Format</label>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;" data-i18n="jsonHelp">Standard JSON records array format for developer integrations.</p>
+            <button class="btn btn-secondary" id="btn-download-json">
+              <span class="icon-download"></span>
+              <span data-i18n="downloadJson">Download JSON</span>
+            </button>
+          </div>
+
+          <div class="form-group" style="margin-top:24px; border-top: 1px solid var(--border-color); padding-top:16px;">
+            <label class="form-label" data-i18n="otherFormats">Other Formats</label>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;" data-i18n="otherFormatsHelp">TSV for spreadsheets, NDJSON (one JSON record per line) for streaming tools.</p>
+            <div style="display:flex; gap:12px;">
+              <button class="btn btn-secondary" id="btn-download-tsv">
+                <span class="icon-download"></span>
+                <span data-i18n="downloadTsv">Download TSV</span>
+              </button>
+              <button class="btn btn-secondary" id="btn-download-ndjson">
+                <span class="icon-download"></span>
+                <span data-i18n="downloadNdjson">Download NDJSON</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: Selector Hierarchy Graph -->
+    <section class="view-panel" id="view-selector-graph" style="height: calc(100vh - 80px);">
+      <div class="card" style="height: 100%; display: flex; flex-direction: column;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-network"></span>
+            <span data-i18n="selectorHierarchy">Selector Hierarchy Graph</span>
+          </div>
+          <div>
+            <button class="btn btn-secondary btn-sm" id="btn-back-to-selectors">
+              <span class="icon-layers"></span>
+              <span data-i18n="backToSelectors">Back to Selectors</span>
+            </button>
+          </div>
+        </div>
+        <div id="graph-container" style="flex:1; width:100%; height:100%; min-height:400px; background:#070b14;"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="slideshow-overlay" id="slideshow-overlay" hidden>
+    <div class="slideshow-stage">
+      <img id="slideshow-image" alt="" />
+    </div>
+    <div class="slideshow-chrome" id="slideshow-chrome">
+      <div class="slideshow-counter" id="slideshow-counter">0 / 0</div>
+      <button type="button" class="slideshow-icon slideshow-close" id="btn-slideshow-close" data-i18n-title="close" title="Close" aria-label="Close">✕</button>
+      <button type="button" class="slideshow-icon slideshow-prev" id="btn-slide-prev" data-i18n-title="previousSlide" aria-label="Previous">‹</button>
+      <button type="button" class="slideshow-icon slideshow-next" id="btn-slide-next" data-i18n-title="nextSlide" aria-label="Next">›</button>
+      <div class="slideshow-tools">
+        <div class="slideshow-dur">
+          <input type="number" id="slideshow-interval" min="1" max="60" value="4" data-i18n-title="intervalSeconds" />
+          <span>s</span>
+        </div>
+        <select id="slideshow-transition" data-i18n-title="transition">
+          <option value="fade" data-i18n="fade">Fade</option>
+          <option value="slide" data-i18n="slide">Slide</option>
+          <option value="zoom" data-i18n="zoom">Zoom</option>
+          <option value="none" data-i18n="cut">Cut</option>
+        </select>
+        <button type="button" class="slideshow-icon" id="btn-slide-play" data-i18n-title="play" aria-label="Play">▶</button>
+        <button type="button" class="slideshow-icon" id="btn-slide-download" data-i18n-title="downloadImage" aria-label="Download image">⬇</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Scripts -->
+  <script src="../lib/csv.js"></script>
+  <script src="../lib/xlsx.js"></script>
+  <script src="../lib/icons.js"></script>
+  <script src="../src/engine/UrlRangeExpander.js"></script>
+  <script src="../src/models/Selector.js"></script>
+  <script src="../src/models/Sitemap.js"></script>
+  <script src="../src/engine/CssSelectorGenerator.js"></script>
+  <script src="../src/engine/SelectorEngine.js"></script>
+  <script src="../src/engine/DataFlattener.js"></script>
+  <script src="../src/engine/ScraperEngine.js"></script>
+  <script src="../src/storage/Storage.js"></script>
+  <script src="../src/export/Exporter.js"></script>
+  <script src="../src/ui/SelectorGraph.js"></script>
+  <script src="../lib/i18n.js"></script>
+  <script src="../lib/zip.js"></script>
+  <script src="../dashboard/dashboard.js"></script>
+</body>
+</html>

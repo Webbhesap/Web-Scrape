@@ -6,7 +6,9 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "build:panel": "node tools/build_panel.js",
-    "check:panel": "node tools/build_panel.js --check"
+    "check:panel": "node tools/build_panel.js --check",
+    "build:tor": "node tools/build_tor.js",
+    "check:tor": "node tools/build_tor.js --check"
   },
   "keywords": [
     "web-scraper",

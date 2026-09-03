@@ -1,0 +1,2483 @@
+/**
+ * Web Scraper Main Application Controller.
+ * Manages UI views, sitemap lifecycle, selector hierarchy, live scraping execution,
+ * data viewing, and export operations.
+ */
+(function () {
+  'use strict';
+
+  // Application State
+  const state = {
+    currentView: 'sitemaps',
+    sitemaps: [],
+    currentSitemap: null,
+    currentParentSelector: '_root',
+    parentHierarchyPath: ['_root'],
+    editingSelectorId: null,
+    scrapedData: [],
+    filteredData: [],
+    galleryItems: [],
+    scraperEngine: null,
+    dataPagination: {
+      page: 1,
+      pageSize: 25,
+      sortCol: null,
+      sortAsc: true
+    }
+  };
+
+  // DOM Elements Cache
+  const elements = {};
+
+  function t(key, vars) {
+    if (typeof AppI18n !== 'undefined') return AppI18n.t(key, vars);
+    return key;
+  }
+
+  function init() {
+    cacheElements();
+    renderIcons();
+    bindGlobalEvents();
+    bindFormEvents();
+    bindScraperEvents();
+    bindDataViewerEvents();
+    loadSitemaps();
+    window.__wsOnLangChange = function () {
+      if (typeof AppI18n !== 'undefined') AppI18n.apply();
+      if (state.currentView === 'sitemaps') renderSitemapsList();
+      else if (state.currentView === 'selectors') renderSelectorsList();
+      else if (state.currentView === 'gallery') renderGallery();
+      else if (state.currentView === 'browse-data') filterAndRenderDataTable();
+    };
+    const langBtn = document.getElementById('btn-lang-toggle');
+    if (langBtn && typeof AppI18n !== 'undefined') {
+      AppI18n.apply();
+      langBtn.addEventListener('click', () => {
+        AppI18n.setLang(AppI18n.getLang() === 'tr' ? 'en' : 'tr');
+      });
+    }
+
+    // Check if query params specify sitemap
+    const urlParams = new URLSearchParams(window.location.search);
+    const sitemapId = urlParams.get('sitemap');
+    const viewParam = urlParams.get('view');
+    const newUrl = urlParams.get('newUrl');
+    if (sitemapId) {
+      openSitemap(sitemapId, viewParam || 'selectors');
+    } else if (newUrl) {
+      openCreateSitemapMeta();
+      if (elements.fieldSitemapUrls) {
+        elements.fieldSitemapUrls.value = newUrl;
+      }
+    } else {
+      switchView('sitemaps');
+    }
+
+    // Listen for picker messages from background / content scripts
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((message) => {
+        // The background worker re-broadcasts picker results with a
+        // `_forwarded` flag; skip those to avoid handling duplicates.
+        if (message && message.type === 'PICKER_RESULT' && !message._forwarded) {
+          if (elements.fieldSelectorCss) {
+            elements.fieldSelectorCss.value = message.selector;
+          }
+          if (message.multiple && elements.fieldSelectorMultiple) {
+            elements.fieldSelectorMultiple.checked = true;
+          }
+        }
+      });
+    }
+  }
+
+  function cacheElements() {
+    // Nav
+    elements.dropdownSitemaps = document.getElementById('dropdown-sitemaps');
+    elements.btnDropdownSitemaps = document.getElementById('btn-dropdown-sitemaps');
+    elements.dropdownCurrentSitemap = document.getElementById('dropdown-current-sitemap');
+    elements.btnDropdownCurrentSitemap = document.getElementById('btn-dropdown-current-sitemap');
+    elements.navCurrentSitemapTitle = document.getElementById('nav-current-sitemap-title');
+    elements.breadcrumbBar = document.getElementById('breadcrumb-bar');
+
+    // Views
+    elements.views = {
+      sitemaps: document.getElementById('view-sitemaps'),
+      selectors: document.getElementById('view-selectors'),
+      'selector-edit': document.getElementById('view-selector-edit'),
+      'sitemap-meta': document.getElementById('view-sitemap-meta'),
+      'sitemap-import': document.getElementById('view-sitemap-import'),
+      'sitemap-export': document.getElementById('view-sitemap-export'),
+      scrape: document.getElementById('view-scrape'),
+      'browse-data': document.getElementById('view-browse-data'),
+      gallery: document.getElementById('view-gallery'),
+      'export-data': document.getElementById('view-export-data'),
+      'selector-graph': document.getElementById('view-selector-graph')
+    };
+
+    // Sitemaps list view
+    elements.tbodySitemaps = document.getElementById('tbody-sitemaps');
+    elements.searchSitemapsInput = document.getElementById('search-sitemaps-input');
+
+    // Selectors list view
+    elements.tbodySelectors = document.getElementById('tbody-selectors');
+    elements.selectorsViewTitle = document.getElementById('selectors-view-title');
+
+    // Selector Edit Form
+    elements.formSelectorEdit = document.getElementById('form-selector-edit');
+    elements.selectorEditTitle = document.getElementById('selector-edit-title');
+    elements.selectorEditError = document.getElementById('selector-edit-error');
+    elements.fieldSelectorId = document.getElementById('field-selector-id');
+    elements.fieldSelectorType = document.getElementById('field-selector-type');
+    elements.fieldSelectorTypeDesc = document.getElementById('field-selector-type-desc');
+    elements.fieldSelectorCss = document.getElementById('field-selector-css');
+    elements.fieldSelectorMultiple = document.getElementById('field-selector-multiple');
+    elements.fieldSelectorRegex = document.getElementById('field-selector-regex');
+    elements.fieldSelectorDelay = document.getElementById('field-selector-delay');
+    elements.parentSelectorsList = document.getElementById('parent-selectors-list');
+
+    // Type options containers
+    elements.optLink = document.getElementById('opt-link');
+    elements.fieldLinkType = document.getElementById('field-link-type');
+    elements.optImage = document.getElementById('opt-image');
+    elements.fieldImageDownload = document.getElementById('field-image-download');
+    elements.optTable = document.getElementById('opt-table');
+    elements.fieldTableHeaderSel = document.getElementById('field-table-header-sel');
+    elements.fieldTableDataSel = document.getElementById('field-table-data-sel');
+    elements.optAttribute = document.getElementById('opt-attribute');
+    elements.fieldExtractAttribute = document.getElementById('field-extract-attribute');
+    elements.optHtml = document.getElementById('opt-html');
+    elements.fieldHtmlOuter = document.getElementById('field-html-outer');
+    elements.optGrouped = document.getElementById('opt-grouped');
+    elements.fieldGroupedDelimiter = document.getElementById('field-grouped-delimiter');
+    elements.optPagination = document.getElementById('opt-pagination');
+    elements.fieldPaginationType = document.getElementById('field-pagination-type');
+    elements.fieldPaginationMax = document.getElementById('field-pagination-max');
+    elements.optClick = document.getElementById('opt-click');
+    elements.fieldClickElementSel = document.getElementById('field-click-element-sel');
+    elements.fieldClickType = document.getElementById('field-click-type');
+    elements.fieldClickDelay = document.getElementById('field-click-delay');
+    elements.fieldClickDiscardInitial = document.getElementById('field-click-discard-initial');
+    elements.optScroll = document.getElementById('opt-scroll');
+    elements.fieldScrollElementSel = document.getElementById('field-scroll-element-sel');
+    elements.fieldScrollDelay = document.getElementById('field-scroll-delay');
+    elements.fieldScrollMax = document.getElementById('field-scroll-max');
+
+    // Sitemap Meta Form
+    elements.formSitemapMeta = document.getElementById('form-sitemap-meta');
+    elements.sitemapMetaTitle = document.getElementById('sitemap-meta-title');
+    elements.sitemapMetaError = document.getElementById('sitemap-meta-error');
+    elements.fieldSitemapId = document.getElementById('field-sitemap-id');
+    elements.fieldSitemapUrls = document.getElementById('field-sitemap-urls');
+    elements.btnSaveSitemapMeta = document.getElementById('btn-save-sitemap-meta');
+
+    // Sitemap Import Form
+    elements.formSitemapImport = document.getElementById('form-sitemap-import');
+    elements.sitemapImportError = document.getElementById('sitemap-import-error');
+    elements.fieldImportJson = document.getElementById('field-import-json');
+    elements.fieldImportId = document.getElementById('field-import-id');
+    elements.fileImportJson = document.getElementById('file-import-json');
+
+    // Sitemap Export View
+    elements.fieldExportJson = document.getElementById('field-export-json');
+
+    // Scrape Monitor
+    elements.scrapeStatusBadge = document.getElementById('scrape-status-badge');
+    elements.metricPages = document.getElementById('metric-pages');
+    elements.metricRecords = document.getElementById('metric-records');
+    elements.metricQueue = document.getElementById('metric-queue');
+    elements.metricTime = document.getElementById('metric-time');
+    elements.metricErrors = document.getElementById('metric-errors');
+    elements.scrapeCurrentUrl = document.getElementById('scrape-current-url');
+    elements.scrapeLogBox = document.getElementById('scrape-log-box');
+    elements.btnScrapePause = document.getElementById('btn-scrape-pause');
+    elements.btnScrapeResume = document.getElementById('btn-scrape-resume');
+    elements.btnScrapeStop = document.getElementById('btn-scrape-stop');
+
+    // Browse Data View
+    elements.tableScrapedData = document.getElementById('table-scraped-data');
+    elements.theadScrapedData = document.getElementById('thead-scraped-data');
+    elements.tbodyScrapedData = document.getElementById('tbody-scraped-data');
+    elements.searchDataInput = document.getElementById('search-data-input');
+    elements.browseRecordCountBadge = document.getElementById('browse-record-count-badge');
+    elements.dataPageStart = document.getElementById('data-page-start');
+    elements.dataPageEnd = document.getElementById('data-page-end');
+    elements.dataPageTotal = document.getElementById('data-page-total');
+    elements.dataPageCurrentNum = document.getElementById('data-page-current-num');
+    elements.btnDataPrevPage = document.getElementById('btn-data-prev-page');
+    elements.btnDataNextPage = document.getElementById('btn-data-next-page');
+
+    // Graph Container
+    elements.graphContainer = document.getElementById('graph-container');
+  }
+
+  function renderIcons() {
+    if (typeof AppIcons === 'undefined') return;
+
+    const logoIcon = document.getElementById('logo-icon');
+    if (logoIcon) logoIcon.innerHTML = AppIcons.get('spider');
+
+    document.querySelectorAll('.icon-chevron-down').forEach(el => el.innerHTML = AppIcons.get('chevronDown'));
+    document.querySelectorAll('.icon-folder').forEach(el => el.innerHTML = AppIcons.get('folder'));
+    document.querySelectorAll('.icon-plus').forEach(el => el.innerHTML = AppIcons.get('plus'));
+    document.querySelectorAll('.icon-upload').forEach(el => el.innerHTML = AppIcons.get('upload'));
+    document.querySelectorAll('.icon-layers').forEach(el => el.innerHTML = AppIcons.get('layers'));
+    document.querySelectorAll('.icon-network').forEach(el => el.innerHTML = AppIcons.get('network'));
+    document.querySelectorAll('.icon-edit').forEach(el => el.innerHTML = AppIcons.get('edit'));
+    document.querySelectorAll('.icon-play').forEach(el => el.innerHTML = AppIcons.get('play'));
+    document.querySelectorAll('.icon-table').forEach(el => el.innerHTML = AppIcons.get('table'));
+    document.querySelectorAll('.icon-image').forEach(el => el.innerHTML = AppIcons.get('image'));
+    document.querySelectorAll('.icon-download').forEach(el => el.innerHTML = AppIcons.get('download'));
+    document.querySelectorAll('.icon-code').forEach(el => el.innerHTML = AppIcons.get('code'));
+    document.querySelectorAll('.icon-trash').forEach(el => el.innerHTML = AppIcons.get('trash'));
+    document.querySelectorAll('.icon-crosshair').forEach(el => el.innerHTML = AppIcons.get('crosshair'));
+    document.querySelectorAll('.icon-eye').forEach(el => el.innerHTML = AppIcons.get('eye'));
+    document.querySelectorAll('.icon-copy').forEach(el => el.innerHTML = AppIcons.get('copy'));
+    document.querySelectorAll('.icon-refresh').forEach(el => el.innerHTML = AppIcons.get('refresh'));
+    document.querySelectorAll('.icon-pause').forEach(el => el.innerHTML = AppIcons.get('pause'));
+    document.querySelectorAll('.icon-square').forEach(el => el.innerHTML = AppIcons.get('square'));
+  }
+
+  function bindGlobalEvents() {
+    // Dropdown toggle logic
+    elements.btnDropdownSitemaps.addEventListener('click', (e) => {
+      e.stopPropagation();
+      elements.dropdownSitemaps.classList.toggle('show');
+      elements.dropdownCurrentSitemap.classList.remove('show');
+    });
+
+    elements.btnDropdownCurrentSitemap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      elements.dropdownCurrentSitemap.classList.toggle('show');
+      elements.dropdownSitemaps.classList.remove('show');
+    });
+
+    document.addEventListener('click', () => {
+      elements.dropdownSitemaps.classList.remove('show');
+      elements.dropdownCurrentSitemap.classList.remove('show');
+    });
+
+    // Nav Sitemaps items
+    document.getElementById('nav-sitemaps-list').addEventListener('click', () => switchView('sitemaps'));
+    document.getElementById('nav-create-sitemap').addEventListener('click', () => openCreateSitemapMeta());
+    document.getElementById('nav-import-sitemap').addEventListener('click', () => openImportSitemap());
+    document.getElementById('btn-quick-new-sitemap').addEventListener('click', () => openCreateSitemapMeta());
+    document.getElementById('btn-sitemaps-create').addEventListener('click', () => openCreateSitemapMeta());
+    document.getElementById('btn-sitemaps-import').addEventListener('click', () => openImportSitemap());
+    const btnExportAll = document.getElementById('btn-sitemaps-export-all');
+    if (btnExportAll) {
+      btnExportAll.addEventListener('click', async () => {
+        const sitemaps = await AppStorage.getAllSitemaps();
+        if (!sitemaps.length) {
+          alert(t('noSitemaps'));
+          return;
+        }
+        Exporter.downloadAllSitemaps(sitemaps);
+      });
+    }
+
+    // Nav Current Sitemap items
+    document.getElementById('nav-sitemap-selectors').addEventListener('click', () => {
+      state.currentParentSelector = '_root';
+      state.parentHierarchyPath = ['_root'];
+      switchView('selectors');
+    });
+    document.getElementById('nav-sitemap-graph').addEventListener('click', () => switchView('selector-graph'));
+    document.getElementById('nav-sitemap-meta').addEventListener('click', () => openEditSitemapMeta());
+    document.getElementById('nav-sitemap-scrape').addEventListener('click', () => switchView('scrape'));
+    document.getElementById('nav-sitemap-browse').addEventListener('click', () => openBrowseData());
+    const navGallery = document.getElementById('nav-sitemap-gallery');
+    if (navGallery) navGallery.addEventListener('click', () => openGallery());
+    document.getElementById('nav-sitemap-export-data').addEventListener('click', () => switchView('export-data'));
+    document.getElementById('nav-sitemap-export-json').addEventListener('click', () => openExportSitemap());
+    document.getElementById('nav-sitemap-delete').addEventListener('click', () => deleteCurrentSitemap());
+
+    // Search sitemaps
+    elements.searchSitemapsInput.addEventListener('input', () => renderSitemapsList());
+
+    // Selectors view buttons
+    document.getElementById('btn-add-selector').addEventListener('click', () => openAddSelector());
+    document.getElementById('btn-view-graph').addEventListener('click', () => switchView('selector-graph'));
+    document.getElementById('btn-back-to-selectors').addEventListener('click', () => switchView('selectors'));
+  }
+
+  function switchView(viewName) {
+    state.currentView = viewName;
+    for (const [name, el] of Object.entries(elements.views)) {
+      if (el) el.classList.toggle('active', name === viewName);
+    }
+
+    // Toggle breadcrumb visibility
+    const showBreadcrumbs = state.currentSitemap && (viewName === 'selectors' || viewName === 'selector-edit');
+    elements.breadcrumbBar.style.display = showBreadcrumbs ? 'flex' : 'none';
+    if (showBreadcrumbs) {
+      renderBreadcrumbs();
+    }
+
+    if (viewName === 'sitemaps') {
+      renderSitemapsList();
+    } else if (viewName === 'selectors') {
+      renderSelectorsList();
+    } else if (viewName === 'selector-graph') {
+      renderSelectorGraph();
+    } else if (viewName === 'gallery') {
+      renderGallery();
+    }
+
+    if (viewName === 'selector-edit') {
+      const main = document.querySelector('.main-container');
+      if (main) main.scrollTop = 0;
+    }
+  }
+
+  function renderBreadcrumbs() {
+    elements.breadcrumbBar.innerHTML = '';
+    state.parentHierarchyPath.forEach((pId, idx) => {
+      const isLast = idx === state.parentHierarchyPath.length - 1;
+      const item = document.createElement('span');
+      item.className = `breadcrumb-item ${isLast ? 'active' : ''}`;
+      item.textContent = pId;
+      if (!isLast) {
+        item.addEventListener('click', () => {
+          state.currentParentSelector = pId;
+          state.parentHierarchyPath = state.parentHierarchyPath.slice(0, idx + 1);
+          renderBreadcrumbs();
+          renderSelectorsList();
+        });
+      }
+      elements.breadcrumbBar.appendChild(item);
+
+      if (!isLast) {
+        const sep = document.createElement('span');
+        sep.className = 'breadcrumb-sep';
+        sep.textContent = '/';
+        elements.breadcrumbBar.appendChild(sep);
+      }
+    });
+  }
+
+  async function loadSitemaps() {
+    try {
+      state.sitemaps = await AppStorage.getAllSitemaps();
+    } catch (e) {
+      console.error('Failed to load sitemaps:', e);
+      state.sitemaps = [];
+    }
+    renderSitemapsList();
+  }
+
+  function renderSitemapsList() {
+    const query = (elements.searchSitemapsInput.value || '').toLowerCase().trim();
+    const filtered = state.sitemaps.filter(s => {
+      const id = (s._id || '').toLowerCase();
+      const name = (s.name || '').toLowerCase();
+      const urls = (Array.isArray(s.startUrl) ? s.startUrl.join(' ') : String(s.startUrl || '')).toLowerCase();
+      return id.includes(query) || name.includes(query) || urls.includes(query);
+    });
+
+    elements.tbodySitemaps.innerHTML = '';
+
+    if (filtered.length === 0) {
+      elements.tbodySitemaps.innerHTML = `
+        <tr>
+          <td colspan="5">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+              <div class="empty-state-title">${t('noSitemaps')}</div>
+              <div>${t('noSitemapsHint')}</div>
+            </div>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    filtered.forEach(s => {
+      const tr = document.createElement('tr');
+      const startUrlsList = Array.isArray(s.startUrl) ? s.startUrl : [s.startUrl];
+      const selectorsCount = Array.isArray(s.selectors) ? s.selectors.length : 0;
+      const modifiedDate = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : '-';
+
+      tr.innerHTML = `
+        <td>
+          <a href="#" class="sitemap-open-link" style="font-weight:600; color:#38bdf8; text-decoration:none;">
+            ${escapeHtml(s.name || s._id)}
+          </a>
+          <div style="font-size:11px; color:#64748b;">${escapeHtml(s._id)}</div>
+        </td>
+        <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(startUrlsList.join('\n'))}">
+          ${escapeHtml(startUrlsList[0] || '')} ${startUrlsList.length > 1 ? `<span class="badge" style="background:#1e293b; color:#94a3b8;">+${startUrlsList.length - 1}</span>` : ''}
+        </td>
+        <td>
+          <span class="badge" style="background:rgba(13,148,136,0.2); color:#2dd4bf;">${t('nSelectors', { n: selectorsCount })}</span>
+        </td>
+        <td style="color:#94a3b8; font-size:11px;">${modifiedDate}</td>
+        <td style="text-align:right;">
+          <div style="display:inline-flex; gap:4px;">
+            <button class="btn btn-secondary btn-sm action-open">${t('open')}</button>
+            <button class="btn btn-primary btn-sm action-scrape">${t('scrape')}</button>
+            <button class="btn btn-secondary btn-sm action-browse">${t('data')}</button>
+            <button class="btn btn-secondary btn-sm action-clone">${t('clone')}</button>
+            <button class="btn btn-danger btn-sm action-delete">${t('delete')}</button>
+          </div>
+        </td>
+      `;
+
+      // Event handlers
+      tr.querySelector('.sitemap-open-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        openSitemap(s._id, 'selectors');
+      });
+      tr.querySelector('.action-open').addEventListener('click', () => openSitemap(s._id, 'selectors'));
+      tr.querySelector('.action-scrape').addEventListener('click', () => openSitemap(s._id, 'scrape'));
+      tr.querySelector('.action-browse').addEventListener('click', () => openSitemap(s._id, 'browse-data'));
+      tr.querySelector('.action-clone').addEventListener('click', () => cloneSitemap(s._id));
+      tr.querySelector('.action-delete').addEventListener('click', () => deleteSitemapDirect(s._id));
+
+      elements.tbodySitemaps.appendChild(tr);
+    });
+  }
+
+  async function openSitemap(sitemapId, targetView = 'selectors') {
+    const rawData = await AppStorage.getSitemap(sitemapId);
+    if (!rawData) {
+      alert(t('sitemapNotFound', { id: sitemapId }));
+      switchView('sitemaps');
+      return;
+    }
+
+    state.currentSitemap = new Sitemap(rawData);
+    state.currentParentSelector = '_root';
+    state.parentHierarchyPath = ['_root'];
+
+    elements.dropdownCurrentSitemap.style.display = 'inline-block';
+    elements.navCurrentSitemapTitle.textContent = state.currentSitemap.name || state.currentSitemap._id;
+
+    if (targetView === 'browse-data') {
+      openBrowseData();
+    } else {
+      switchView(targetView);
+    }
+  }
+
+  function renderSelectorsList() {
+    if (!state.currentSitemap) return;
+
+    elements.selectorsViewTitle.textContent = t('selectorsIn', { id: state.currentParentSelector });
+
+    const selectorsInLevel = state.currentSitemap.getDirectChildSelectors(state.currentParentSelector);
+    elements.tbodySelectors.innerHTML = '';
+
+    if (selectorsInLevel.length === 0) {
+      elements.tbodySelectors.innerHTML = `
+        <tr>
+          <td colspan="6">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <div class="empty-state-title">${t('noSelectors', { id: state.currentParentSelector })}</div>
+              <div>${t('noSelectorsHint')}</div>
+            </div>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const dropRoot = document.getElementById('drop-root-zone');
+    if (dropRoot) {
+      dropRoot.ondragover = (e) => { e.preventDefault(); dropRoot.classList.add('drop-target'); };
+      dropRoot.ondragleave = () => dropRoot.classList.remove('drop-target');
+      dropRoot.ondrop = (e) => {
+        e.preventDefault();
+        dropRoot.classList.remove('drop-target');
+        const id = e.dataTransfer.getData('text/selector-id');
+        if (id) reparentSelectorByDrag(id, '_root');
+      };
+    }
+
+    selectorsInLevel.forEach(sel => {
+      const tr = document.createElement('tr');
+      tr.className = 'selector-row';
+      tr.draggable = true;
+      tr.dataset.selectorId = sel.id;
+      const typeMeta = (typeof Selector === 'function' && Selector.SELECTOR_TYPES)
+        ? (Selector.SELECTOR_TYPES[sel.type] || Selector.SELECTOR_TYPES.SelectorText)
+        : { title: sel.type, acceptsChildren: false };
+      const typeBadgeClass = getTypeBadgeClass(sel.type);
+
+      const hasChildren = state.currentSitemap.getDirectChildSelectors(sel.id).length > 0;
+      const canHaveChildren = sel.acceptsChildren || typeMeta.acceptsChildren;
+
+      tr.innerHTML = `
+        <td>
+          <span class="drag-handle" title="Drag to nest">⋮⋮</span>
+          <a href="#" class="selector-id-link" style="font-weight:600; color:#38bdf8; text-decoration:none;">
+            ${escapeHtml(sel.id)}
+          </a>
+        </td>
+        <td style="font-family:var(--font-mono); font-size:11px; color:#94a3b8; max-width:240px; overflow:hidden; text-overflow:ellipsis;">
+          ${escapeHtml(sel.selector || '-')}
+        </td>
+        <td>
+          <span class="badge ${typeBadgeClass}">${t({
+            SelectorText: 'typeText', SelectorLink: 'typeLink', SelectorPopupLink: 'typePopup',
+            SelectorImage: 'typeImage', SelectorTable: 'typeTable', SelectorElement: 'typeElement',
+            SelectorElementAttribute: 'typeAttr', SelectorHTML: 'typeHtml', SelectorGrouped: 'typeGrouped',
+            SelectorPagination: 'typePagination', SelectorElementClick: 'typeClick', SelectorElementScroll: 'typeScroll',
+            SelectorXPath: 'typeXPath'
+          }[sel.type] || 'typeText')}</span>
+        </td>
+        <td>
+          <span style="color:${sel.multiple ? '#34d399' : '#64748b'}; font-weight:600;">
+            ${sel.multiple ? 'true' : 'false'}
+          </span>
+        </td>
+        <td style="font-size:11px; color:#94a3b8;">
+          ${escapeHtml(sel.parentSelectors.join(', '))}
+        </td>
+        <td style="text-align:right;">
+          <div style="display:inline-flex; gap:4px;">
+            ${canHaveChildren ? `
+              <button class="btn btn-secondary btn-sm action-children" title="Open Child Selectors">
+                <span class="icon-chevron-right"></span>
+                <span>${t('selectChildren')} (${state.currentSitemap.getDirectChildSelectors(sel.id).length})</span>
+              </button>
+            ` : ''}
+            <button class="btn btn-secondary btn-sm action-edit">${t('edit')}</button>
+            <button class="btn btn-danger btn-sm action-delete">${t('delete')}</button>
+          </div>
+        </td>
+      `;
+
+      // Event handlers
+      tr.querySelector('.selector-id-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        openEditSelector(sel.id);
+      });
+      tr.querySelector('.action-edit').addEventListener('click', () => openEditSelector(sel.id));
+      tr.querySelector('.action-delete').addEventListener('click', () => deleteSelector(sel.id));
+
+      tr.addEventListener('dragstart', (e) => {
+        tr.classList.add('dragging');
+        e.dataTransfer.setData('text/selector-id', sel.id);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      tr.addEventListener('dragend', () => {
+        tr.classList.remove('dragging');
+        document.querySelectorAll('.selector-row').forEach(r => r.classList.remove('drop-nest', 'drop-before', 'drop-after'));
+      });
+      tr.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const mode = dropModeForRow(e, tr, canHaveChildren);
+        tr.classList.remove('drop-nest', 'drop-before', 'drop-after');
+        tr.classList.add(mode);
+      });
+      tr.addEventListener('dragleave', () => tr.classList.remove('drop-nest', 'drop-before', 'drop-after'));
+      tr.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const mode = dropModeForRow(e, tr, canHaveChildren);
+        tr.classList.remove('drop-nest', 'drop-before', 'drop-after');
+        const draggedId = e.dataTransfer.getData('text/selector-id');
+        if (draggedId && draggedId !== sel.id) {
+          handleSelectorDrop(draggedId, sel.id, mode);
+        }
+      });
+
+      const childrenBtn = tr.querySelector('.action-children');
+      if (childrenBtn) {
+        childrenBtn.addEventListener('click', () => {
+          state.currentParentSelector = sel.id;
+          state.parentHierarchyPath.push(sel.id);
+          renderBreadcrumbs();
+          renderSelectorsList();
+        });
+      }
+
+      elements.tbodySelectors.appendChild(tr);
+    });
+  }
+
+  function dropModeForRow(e, tr, canNest) {
+    const rect = tr.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    if (canNest && y > rect.height * 0.28 && y < rect.height * 0.72) return 'drop-nest';
+    return y < rect.height / 2 ? 'drop-before' : 'drop-after';
+  }
+
+  async function reparentSelectorByDrag(selectorId, newParentId) {
+    if (!state.currentSitemap) return;
+    const parent = newParentId === '_root' ? { acceptsChildren: true, type: '_root' } : state.currentSitemap.getSelectorById(newParentId);
+    const types = (typeof Selector === 'function' && Selector.SELECTOR_TYPES) ? Selector.SELECTOR_TYPES : {};
+    const canNest = newParentId === '_root' || (parent && (parent.acceptsChildren || (types[parent.type] && types[parent.type].acceptsChildren)));
+    if (!canNest) {
+      alert(t('nestOnlyContainers'));
+      return;
+    }
+    const ok = state.currentSitemap.reparentSelector(selectorId, newParentId);
+    if (!ok) {
+      alert(t('nestCycle'));
+      return;
+    }
+    await AppStorage.saveSitemap(state.currentSitemap);
+    renderSelectorsList();
+  }
+
+  async function handleSelectorDrop(draggedId, targetId, mode) {
+    if (!state.currentSitemap) return;
+    let ok = false;
+    if (mode === 'drop-nest') {
+      await reparentSelectorByDrag(draggedId, targetId);
+      return;
+    }
+    ok = state.currentSitemap.reorderSibling(draggedId, targetId, mode === 'drop-after');
+    if (!ok) {
+      alert(t('reorderFail'));
+      return;
+    }
+    await AppStorage.saveSitemap(state.currentSitemap);
+    renderSelectorsList();
+  }
+
+  function getTypeBadgeClass(type) {
+    switch (type) {
+      case 'SelectorText': return 'badge-text';
+      case 'SelectorLink': return 'badge-link';
+      case 'SelectorPopupLink': return 'badge-link';
+      case 'SelectorImage': return 'badge-image';
+      case 'SelectorTable': return 'badge-table';
+      case 'SelectorElement': return 'badge-element';
+      case 'SelectorElementAttribute': return 'badge-attr';
+      case 'SelectorHTML': return 'badge-html';
+      case 'SelectorGrouped': return 'badge-attr';
+      case 'SelectorPagination': return 'badge-page';
+      case 'SelectorElementClick': return 'badge-click';
+      case 'SelectorElementScroll': return 'badge-scroll';
+      case 'SelectorXPath': return 'badge-html';
+      default: return 'badge-text';
+    }
+  }
+
+  function bindFormEvents() {
+    // Selector Type Change
+    elements.fieldSelectorType.addEventListener('change', (e) => {
+      onSelectorTypeChanged(e.target.value);
+    });
+
+    // Selector Edit Form Submit
+    elements.formSelectorEdit.addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveSelectorForm();
+    });
+
+    const btnSaveSelector = document.getElementById('btn-save-selector');
+    if (btnSaveSelector) {
+      btnSaveSelector.addEventListener('click', (e) => {
+        e.preventDefault();
+        saveSelectorForm();
+      });
+    }
+
+    document.getElementById('btn-cancel-selector-edit').addEventListener('click', () => {
+      switchView('selectors');
+    });
+
+    // Sitemap Meta Form Submit
+    elements.formSitemapMeta.addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveSitemapMetaForm();
+    });
+
+    // Live URL range expansion preview (debounced to keep typing responsive).
+    if (elements.fieldSitemapUrls) {
+      let urlPreviewTimer = null;
+      elements.fieldSitemapUrls.addEventListener('input', () => {
+        clearTimeout(urlPreviewTimer);
+        urlPreviewTimer = setTimeout(updateUrlRangePreview, 250);
+      });
+    }
+
+    if (elements.btnSaveSitemapMeta) {
+      elements.btnSaveSitemapMeta.addEventListener('click', (e) => {
+        e.preventDefault();
+        saveSitemapMetaForm();
+      });
+    }
+
+    document.getElementById('btn-cancel-sitemap-meta').addEventListener('click', () => {
+      if (state.currentSitemap) {
+        switchView('selectors');
+      } else {
+        switchView('sitemaps');
+      }
+    });
+
+    // Sitemap Import Form
+    elements.formSitemapImport.addEventListener('submit', (e) => {
+      e.preventDefault();
+      importSitemapForm();
+    });
+
+    const btnSubmitImport = document.getElementById('btn-submit-sitemap-import');
+    if (btnSubmitImport) {
+      btnSubmitImport.addEventListener('click', (e) => {
+        e.preventDefault();
+        importSitemapForm();
+      });
+    }
+
+    document.getElementById('btn-cancel-sitemap-import').addEventListener('click', () => {
+      switchView('sitemaps');
+    });
+
+    document.getElementById('btn-load-json-file').addEventListener('click', () => {
+      elements.fileImportJson.click();
+    });
+
+    elements.fileImportJson.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          elements.fieldImportJson.value = evt.target.result;
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    // Sitemap Export View buttons
+    document.getElementById('btn-copy-sitemap-json').addEventListener('click', () => {
+      elements.fieldExportJson.select();
+      navigator.clipboard.writeText(elements.fieldExportJson.value);
+      alert(t('copiedJson'));
+    });
+
+    document.getElementById('btn-download-sitemap-json').addEventListener('click', () => {
+      if (state.currentSitemap) {
+        Exporter.downloadSitemapJSON(state.currentSitemap.toJSON(), state.currentSitemap.name);
+      }
+    });
+
+    // Selector Picker Buttons
+    document.getElementById('btn-picker-select').addEventListener('click', () => {
+      launchElementPicker('select');
+    });
+    document.getElementById('btn-picker-preview').addEventListener('click', () => {
+      launchElementPicker('preview');
+    });
+    document.getElementById('btn-picker-data-preview').addEventListener('click', () => {
+      launchElementPicker('data-preview');
+    });
+  }
+
+  function onSelectorTypeChanged(type) {
+    const meta = Selector.SELECTOR_TYPES[type] || Selector.SELECTOR_TYPES.SelectorText;
+    elements.fieldSelectorTypeDesc.textContent = meta.description;
+
+    // Hide all type option divs
+    document.querySelectorAll('.type-options').forEach(el => el.style.display = 'none');
+
+    // Toggle specific option panels
+    if (type === 'SelectorLink') elements.optLink.style.display = 'block';
+    else if (type === 'SelectorImage') elements.optImage.style.display = 'block';
+    else if (type === 'SelectorTable') elements.optTable.style.display = 'block';
+    else if (type === 'SelectorElementAttribute') elements.optAttribute.style.display = 'block';
+    else if (type === 'SelectorHTML') elements.optHtml.style.display = 'block';
+    else if (type === 'SelectorGrouped') elements.optGrouped.style.display = 'block';
+    else if (type === 'SelectorPagination') elements.optPagination.style.display = 'block';
+    else if (type === 'SelectorElementClick') elements.optClick.style.display = 'block';
+    else if (type === 'SelectorElementScroll') elements.optScroll.style.display = 'block';
+    else if (type === 'SelectorXPath') elements.optAttribute.style.display = 'block';
+
+    // Default multiple checkboxes
+    if (type === 'SelectorElement' || type === 'SelectorTable' || type === 'SelectorPagination' || type === 'SelectorElementClick' || type === 'SelectorElementScroll') {
+      elements.fieldSelectorMultiple.checked = true;
+    }
+  }
+
+  function openAddSelector() {
+    state.editingSelectorId = null;
+    if (elements.selectorEditError) {
+      elements.selectorEditError.style.display = 'none';
+      elements.selectorEditError.textContent = '';
+    }
+    elements.selectorEditTitle.textContent = t('addSelectorIn', { id: state.currentParentSelector });
+    elements.formSelectorEdit.reset();
+
+    elements.fieldSelectorType.value = 'SelectorText';
+    onSelectorTypeChanged('SelectorText');
+    elements.fieldSelectorMultiple.checked = false;
+
+    renderParentSelectorsCheckboxes([state.currentParentSelector]);
+    switchView('selector-edit');
+  }
+
+  function openEditSelector(selectorId) {
+    const sel = state.currentSitemap.getSelectorById(selectorId);
+    if (!sel) return;
+
+    state.editingSelectorId = selectorId;
+    if (elements.selectorEditError) {
+      elements.selectorEditError.style.display = 'none';
+      elements.selectorEditError.textContent = '';
+    }
+    elements.selectorEditTitle.textContent = t('editSelector', { id: sel.id });
+
+    elements.fieldSelectorId.value = sel.id;
+    elements.fieldSelectorType.value = sel.type;
+    onSelectorTypeChanged(sel.type);
+
+    elements.fieldSelectorCss.value = sel.selector || '';
+    elements.fieldSelectorMultiple.checked = sel.multiple === true;
+    elements.fieldSelectorRegex.value = sel.regex || '';
+    elements.fieldSelectorDelay.value = sel.delay || 0;
+
+    // Type specific fields
+    if (sel.type === 'SelectorLink') elements.fieldLinkType.value = sel.linkType || 'linkFromHref';
+    else if (sel.type === 'SelectorImage') elements.fieldImageDownload.checked = sel.downloadImage === true;
+    else if (sel.type === 'SelectorTable') {
+      elements.fieldTableHeaderSel.value = sel.tableHeaderRowSelector || 'thead tr, tr:first-child';
+      elements.fieldTableDataSel.value = sel.tableDataRowSelector || 'tbody tr, tr:not(:first-child)';
+    } else if (sel.type === 'SelectorElementAttribute') elements.fieldExtractAttribute.value = sel.extractAttribute || 'href';
+    else if (sel.type === 'SelectorHTML') elements.fieldHtmlOuter.checked = sel.outerHTML === true;
+    else if (sel.type === 'SelectorGrouped') elements.fieldGroupedDelimiter.value = sel.delimiter !== undefined ? sel.delimiter : ', ';
+    else if (sel.type === 'SelectorPagination') {
+      elements.fieldPaginationType.value = sel.paginationType || 'link';
+      elements.fieldPaginationMax.value = sel.maxPages || 0;
+    } else if (sel.type === 'SelectorElementClick') {
+      elements.fieldClickElementSel.value = sel.clickElementSelector || '';
+      elements.fieldClickType.value = sel.clickType || 'clickMore';
+      elements.fieldClickDelay.value = sel.clickDelay || 1000;
+      elements.fieldClickDiscardInitial.checked = sel.discardInitialElements === true;
+    } else if (sel.type === 'SelectorElementScroll') {
+      elements.fieldScrollElementSel.value = sel.scrollElementSelector || '';
+      elements.fieldScrollDelay.value = sel.scrollDelay || 1000;
+      elements.fieldScrollMax.value = sel.maxScrolls || 20;
+    } else if (sel.type === 'SelectorXPath') {
+      elements.fieldExtractAttribute.value = sel.extractAttribute || '';
+    }
+
+    renderParentSelectorsCheckboxes(sel.parentSelectors);
+    switchView('selector-edit');
+  }
+
+  function renderParentSelectorsCheckboxes(selectedParents = ['_root']) {
+    elements.parentSelectorsList.innerHTML = '';
+
+    const allIds = state.currentSitemap.getAllSelectorIds();
+    allIds.forEach(id => {
+      if (state.editingSelectorId && id === state.editingSelectorId && elements.fieldSelectorType.value !== 'SelectorPagination' && elements.fieldSelectorType.value !== 'SelectorLink') {
+        return;
+      }
+
+      const label = document.createElement('label');
+      label.className = 'form-checkbox-label';
+      label.style.display = 'flex';
+      label.style.marginBottom = '4px';
+
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.value = id;
+      chk.checked = selectedParents.includes(id);
+
+      const span = document.createElement('span');
+      span.textContent = id;
+      span.style.fontFamily = id === '_root' ? 'sans-serif' : 'var(--font-mono)';
+      span.style.fontWeight = id === '_root' ? '600' : 'normal';
+
+      label.appendChild(chk);
+      label.appendChild(span);
+      elements.parentSelectorsList.appendChild(label);
+    });
+  }
+
+  async function saveSelectorForm() {
+    if (elements.selectorEditError) {
+      elements.selectorEditError.style.display = 'none';
+      elements.selectorEditError.textContent = '';
+    }
+
+    const parentCheckboxes = Array.from(elements.parentSelectorsList.querySelectorAll('input[type="checkbox"]:checked'));
+    const parentSelectors = parentCheckboxes.map(c => c.value);
+
+    if (parentSelectors.length === 0) {
+      showSelectorError(t('needParent'));
+      return;
+    }
+
+    const rawId = elements.fieldSelectorId.value.trim();
+    if (!rawId) {
+      showSelectorError(t('needSelectorId'));
+      return;
+    }
+
+    const selData = {
+      id: rawId,
+      type: elements.fieldSelectorType.value,
+      selector: elements.fieldSelectorCss.value.trim(),
+      multiple: elements.fieldSelectorMultiple.checked,
+      parentSelectors: parentSelectors,
+      regex: elements.fieldSelectorRegex.value.trim(),
+      delay: parseInt(elements.fieldSelectorDelay.value, 10) || 0
+    };
+
+    // Type options
+    if (selData.type === 'SelectorLink') selData.linkType = elements.fieldLinkType.value;
+    else if (selData.type === 'SelectorImage') selData.downloadImage = elements.fieldImageDownload.checked;
+    else if (selData.type === 'SelectorTable') {
+      selData.tableHeaderRowSelector = elements.fieldTableHeaderSel.value.trim();
+      selData.tableDataRowSelector = elements.fieldTableDataSel.value.trim();
+    } else if (selData.type === 'SelectorElementAttribute') selData.extractAttribute = elements.fieldExtractAttribute.value.trim();
+    else if (selData.type === 'SelectorHTML') selData.outerHTML = elements.fieldHtmlOuter.checked;
+    else if (selData.type === 'SelectorGrouped') selData.delimiter = elements.fieldGroupedDelimiter.value;
+    else if (selData.type === 'SelectorPagination') {
+      selData.paginationType = elements.fieldPaginationType.value;
+      selData.maxPages = parseInt(elements.fieldPaginationMax.value, 10) || 0;
+    } else if (selData.type === 'SelectorElementClick') {
+      selData.clickElementSelector = elements.fieldClickElementSel.value.trim();
+      selData.clickType = elements.fieldClickType.value;
+      selData.clickDelay = parseInt(elements.fieldClickDelay.value, 10) || 1000;
+      selData.discardInitialElements = elements.fieldClickDiscardInitial.checked;
+    } else if (selData.type === 'SelectorElementScroll') {
+      selData.scrollElementSelector = elements.fieldScrollElementSel.value.trim();
+      selData.scrollDelay = parseInt(elements.fieldScrollDelay.value, 10) || 1000;
+      selData.maxScrolls = parseInt(elements.fieldScrollMax.value, 10) || 20;
+    } else if (selData.type === 'SelectorXPath') {
+      selData.extractAttribute = elements.fieldExtractAttribute.value.trim();
+    }
+
+    const selectorInstance = new Selector(selData);
+    const validation = selectorInstance.validate();
+    if (!validation.isValid) {
+      showSelectorError(validation.errors.join(' '));
+      return;
+    }
+
+    // If ID was changed during edit, clean old selector
+    if (state.editingSelectorId && state.editingSelectorId !== selData.id) {
+      state.currentSitemap.removeSelector(state.editingSelectorId);
+    }
+
+    state.currentSitemap.addSelector(selectorInstance);
+    await AppStorage.saveSitemap(state.currentSitemap);
+    await loadSitemaps();
+
+    switchView('selectors');
+  }
+
+  function showSelectorError(msg) {
+    if (elements.selectorEditError) {
+      elements.selectorEditError.textContent = msg;
+      elements.selectorEditError.style.display = 'block';
+    } else {
+      alert(msg);
+    }
+  }
+
+  async function deleteSelector(selectorId) {
+    if (!confirm(t('confirmDeleteSelector', { id: selectorId }))) {
+      return;
+    }
+
+    state.currentSitemap.removeSelector(selectorId);
+    await AppStorage.saveSitemap(state.currentSitemap);
+    renderSelectorsList();
+  }
+
+  function getTargetTabId(callback) {
+    // 1. If running inside DevTools panel, inspectedWindow.tabId is the exact inspected tab!
+    if (typeof chrome !== 'undefined' && chrome.devtools && chrome.devtools.inspectedWindow && chrome.devtools.inspectedWindow.tabId) {
+      callback(chrome.devtools.inspectedWindow.tabId);
+      return;
+    }
+
+    // 2. If running in normal browser window / popup / dashboard tab:
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+      const isHttpTab = (t) => t && t.url && /^https?:/i.test(t.url);
+
+      chrome.tabs.query({ lastFocusedWindow: true }, (tabs) => {
+        const localHttp = (tabs || []).filter(isHttpTab);
+        const preferred = localHttp.find(t => t.active) || localHttp[0];
+        if (preferred && preferred.id) {
+          callback(preferred.id);
+          return;
+        }
+
+        chrome.tabs.query({}, (allTabs) => {
+          const httpTabs = (allTabs || []).filter(isHttpTab);
+          httpTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+          callback(httpTabs.length ? httpTabs[0].id : null);
+        });
+      });
+      return;
+    }
+
+    callback(null);
+  }
+
+  function launchElementPicker(mode) {
+    const selStr = elements.fieldSelectorCss.value.trim();
+    const selType = elements.fieldSelectorType.value;
+    const isMult = elements.fieldSelectorMultiple.checked;
+
+    // Check if running in Chrome extension environment
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.scripting) {
+      getTargetTabId((tabId) => {
+        if (!tabId) {
+          alert(t('noActiveTab'));
+          return;
+        }
+
+        chrome.tabs.get(tabId, (tabInfo) => {
+          if (chrome.runtime.lastError || !tabInfo) {
+            console.warn('Target tab does not exist or was closed:', chrome.runtime.lastError?.message);
+            alert(t('tabClosed'));
+            return;
+          }
+
+          if (tabInfo.url && (tabInfo.url.startsWith('chrome://') || tabInfo.url.startsWith('edge://') || tabInfo.url.startsWith('chrome-extension://') || tabInfo.url.startsWith('about:'))) {
+            alert(t('systemPage'));
+            return;
+          }
+
+          // Inject picker scripts
+          chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content/selector_picker.js']
+          }, () => {
+            if (chrome.runtime.lastError) {
+              console.warn('Script injection error:', chrome.runtime.lastError.message);
+              alert(t('attachFail', { msg: chrome.runtime.lastError.message }));
+              return;
+            }
+
+            chrome.scripting.insertCSS({
+              target: { tabId: tabId },
+              files: ['content/selector_picker.css']
+            }, () => {
+              if (chrome.runtime.lastError) {
+                console.warn('CSS injection warning:', chrome.runtime.lastError.message);
+              }
+
+              let msgType = 'START_PICKER';
+              if (mode === 'preview') msgType = 'ELEMENT_PREVIEW';
+              else if (mode === 'data-preview') msgType = 'DATA_PREVIEW';
+
+              let scopeSelector = '';
+              if (state.currentParentSelector && state.currentParentSelector !== '_root' && state.currentSitemap) {
+                const parentSel = state.currentSitemap.getSelectorById(state.currentParentSelector);
+                if (parentSel && parentSel.selector) scopeSelector = parentSel.selector;
+              }
+              chrome.tabs.sendMessage(tabId, {
+                type: msgType,
+                selector: selStr,
+                selectorType: selType,
+                multiple: isMult,
+                scopeSelector: scopeSelector
+              }, () => {
+                if (chrome.runtime.lastError) {
+                  console.warn('Message send warning:', chrome.runtime.lastError.message);
+                }
+              });
+            });
+          });
+        });
+      });
+      return;
+    }
+
+    // Standalone fallback: simulate picker dialog prompt
+    if (mode === 'select') {
+      const picked = prompt('Enter CSS selector for elements (e.g. .product-title, div.card, a.link):', selStr || 'h1');
+      if (picked !== null) {
+        elements.fieldSelectorCss.value = picked.trim();
+      }
+    } else {
+      alert(t('previewHint', { sel: selStr }));
+    }
+  }
+
+  function updateUrlRangePreview() {
+    const box = document.getElementById('url-range-preview');
+    const countEl = document.getElementById('url-range-count');
+    const samplesEl = document.getElementById('url-range-samples');
+    const warnEl = document.getElementById('url-range-warning');
+    if (!box || !countEl || !samplesEl || !elements.fieldSitemapUrls) return;
+
+    const raw = elements.fieldSitemapUrls.value || '';
+    const lines = raw.split('\n').map(u => u.trim()).filter(Boolean);
+    const hasRange = lines.some(u => /\[[^\[\]]+\]/.test(u));
+
+    if (!lines.length || !hasRange) {
+      box.style.display = 'none';
+      return;
+    }
+
+    let expanded = [];
+    try {
+      expanded = UrlRangeExpander.expandStartUrls(lines);
+    } catch (e) {
+      box.style.display = 'none';
+      return;
+    }
+
+    box.style.display = 'block';
+    countEl.textContent = t('urlPreviewCount', { n: expanded.length });
+    samplesEl.textContent = expanded.slice(0, 5).join('\n') + (expanded.length > 5 ? '\n…' : '');
+    if (warnEl) warnEl.style.display = expanded.length >= 100000 ? 'block' : 'none';
+  }
+
+  function openCreateSitemapMeta() {
+    state.currentSitemap = null;
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.style.display = 'none';
+      elements.sitemapMetaError.textContent = '';
+    }
+    elements.sitemapMetaTitle.textContent = t('createNewSitemapTitle');
+    elements.btnSaveSitemapMeta.textContent = t('createSitemap');
+    elements.formSitemapMeta.reset();
+    elements.fieldSitemapId.readOnly = false;
+    updateUrlRangePreview();
+    switchView('sitemap-meta');
+  }
+
+  function openEditSitemapMeta() {
+    if (!state.currentSitemap) return;
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.style.display = 'none';
+      elements.sitemapMetaError.textContent = '';
+    }
+    elements.sitemapMetaTitle.textContent = t('editMetadataTitle', { name: state.currentSitemap.name || state.currentSitemap._id });
+    elements.btnSaveSitemapMeta.textContent = t('saveMetadata');
+    elements.fieldSitemapId.value = state.currentSitemap.name || state.currentSitemap._id;
+    elements.fieldSitemapId.readOnly = false;
+    elements.fieldSitemapUrls.value = state.currentSitemap.startUrl.join('\n');
+    updateUrlRangePreview();
+    switchView('sitemap-meta');
+  }
+
+  async function saveSitemapMetaForm() {
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.style.display = 'none';
+      elements.sitemapMetaError.textContent = '';
+    }
+
+    const rawName = elements.fieldSitemapId.value.trim();
+    if (!rawName) {
+      showSitemapError(t('needSitemapName'));
+      return;
+    }
+
+    const urlsRaw = elements.fieldSitemapUrls.value.trim();
+    const urls = urlsRaw.split('\n').map(u => u.trim()).filter(Boolean);
+
+    if (urls.length === 0) {
+      showSitemapError(t('needStartUrl'));
+      return;
+    }
+
+    try {
+      if (state.currentSitemap) {
+        // Editing existing sitemap metadata
+        state.currentSitemap.name = rawName;
+        state.currentSitemap.startUrl = urls.map(u => {
+          const urlText = String(u).trim();
+          if (!urlText.startsWith('http://') && !urlText.startsWith('https://') && !urlText.startsWith('file://')) {
+            return 'https://' + urlText;
+          }
+          return urlText;
+        });
+        
+        const validation = state.currentSitemap.validate();
+        if (!validation.isValid) {
+          showSitemapError(validation.errors.join(' '));
+          return;
+        }
+
+        await AppStorage.saveSitemap(state.currentSitemap);
+      } else {
+        // Creating new sitemap
+        const newSitemap = new Sitemap({
+          _id: rawName,
+          name: rawName,
+          startUrl: urls,
+          selectors: []
+        });
+
+        const validation = newSitemap.validate();
+        if (!validation.isValid) {
+          showSitemapError(validation.errors.join(' '));
+          return;
+        }
+
+        await AppStorage.saveSitemap(newSitemap);
+        state.currentSitemap = newSitemap;
+      }
+
+      await loadSitemaps();
+      openSitemap(state.currentSitemap._id, 'selectors');
+    } catch (err) {
+      showSitemapError(t('saveSitemapErr', { msg: err.message || err }));
+    }
+  }
+
+  function showSitemapError(msg) {
+    if (elements.sitemapMetaError) {
+      elements.sitemapMetaError.textContent = msg;
+      elements.sitemapMetaError.style.display = 'block';
+    } else {
+      alert(msg);
+    }
+  }
+
+  function openImportSitemap() {
+    if (elements.sitemapImportError) {
+      elements.sitemapImportError.style.display = 'none';
+      elements.sitemapImportError.textContent = '';
+    }
+    elements.formSitemapImport.reset();
+    switchView('sitemap-import');
+  }
+
+  async function importSitemapForm() {
+    if (elements.sitemapImportError) {
+      elements.sitemapImportError.style.display = 'none';
+      elements.sitemapImportError.textContent = '';
+    }
+
+    const jsonStr = elements.fieldImportJson.value.trim();
+    if (!jsonStr) {
+      showImportError(t('needJson'));
+      return;
+    }
+
+    const nameOverride = elements.fieldImportId.value.trim();
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+
+      // Full backup file (produced by "Export All") or a plain array of sitemaps.
+      const backupList = Array.isArray(parsed)
+        ? parsed
+        : (parsed && parsed.format === 'web-scraper-backup' && Array.isArray(parsed.sitemaps))
+          ? parsed.sitemaps
+          : null;
+
+      if (backupList) {
+        let imported = 0;
+        const failures = [];
+        for (const item of backupList) {
+          try {
+            const sm = new Sitemap(item);
+            const v = sm.validate();
+            if (!v.isValid) {
+              failures.push(`${sm._id || '?'}: ${v.errors.join(' ')}`);
+              continue;
+            }
+            await AppStorage.saveSitemap(sm);
+            imported++;
+          } catch (err) {
+            failures.push(err.message || String(err));
+          }
+        }
+        await loadSitemaps();
+        if (failures.length) {
+          showImportError(t('importPartial', { ok: imported, fail: failures.length, msg: failures.join('; ') }));
+        } else {
+          alert(t('importedAll', { n: imported }));
+          switchView('sitemaps');
+        }
+        return;
+      }
+
+      if (nameOverride) {
+        parsed._id = nameOverride;
+        parsed.name = nameOverride;
+      }
+
+      const sitemap = new Sitemap(parsed);
+      const validation = sitemap.validate();
+      if (!validation.isValid) {
+        showImportError(t('invalidSitemapJson', { msg: validation.errors.join(' ') }));
+        return;
+      }
+
+      await AppStorage.saveSitemap(sitemap);
+      await loadSitemaps();
+      openSitemap(sitemap._id, 'selectors');
+    } catch (e) {
+      showImportError(t('jsonParseErr', { msg: e.message }));
+    }
+  }
+
+  function showImportError(msg) {
+    if (elements.sitemapImportError) {
+      elements.sitemapImportError.textContent = msg;
+      elements.sitemapImportError.style.display = 'block';
+    } else {
+      alert(msg);
+    }
+  }
+
+  function openExportSitemap() {
+    if (!state.currentSitemap) return;
+    elements.fieldExportJson.value = JSON.stringify(state.currentSitemap.toJSON(), null, 2);
+    switchView('sitemap-export');
+  }
+
+  async function cloneSitemap(sitemapId) {
+    const original = await AppStorage.getSitemap(sitemapId);
+    if (!original) return;
+
+    // Find a free id so cloning the same sitemap repeatedly never overwrites
+    // a previous copy (map _copy, _copy2, _copy3, ...).
+    const baseId = original._id;
+    let newId = `${baseId}_copy`;
+    let suffix = 2;
+    while (await AppStorage.getSitemap(newId)) {
+      newId = `${baseId}_copy${suffix++}`;
+    }
+
+    original._id = newId;
+    original.name = `${original.name || baseId} (Copy${suffix > 2 ? ' ' + (suffix - 1) : ''})`;
+    await AppStorage.saveSitemap(original);
+    await loadSitemaps();
+  }
+
+  async function deleteCurrentSitemap() {
+    if (!state.currentSitemap) return;
+    if (confirm(t('confirmDeleteSitemap', { name: state.currentSitemap.name || state.currentSitemap._id }))) {
+      await AppStorage.deleteSitemap(state.currentSitemap._id);
+      state.currentSitemap = null;
+      elements.dropdownCurrentSitemap.style.display = 'none';
+      await loadSitemaps();
+      switchView('sitemaps');
+    }
+  }
+
+  async function deleteSitemapDirect(sitemapId) {
+    if (confirm(t('confirmDeleteSitemapId', { id: sitemapId }))) {
+      await AppStorage.deleteSitemap(sitemapId);
+      if (state.currentSitemap && state.currentSitemap._id === sitemapId) {
+        state.currentSitemap = null;
+        elements.dropdownCurrentSitemap.style.display = 'none';
+      }
+      await loadSitemaps();
+    }
+  }
+
+  // SCRAPING RUNTIME CONTROLLER
+  function bindScraperEvents() {
+    document.getElementById('btn-start-scraping').addEventListener('click', () => startScraping());
+    elements.btnScrapePause.addEventListener('click', () => {
+      if (state.scraperEngine) state.scraperEngine.pause();
+    });
+    elements.btnScrapeResume.addEventListener('click', () => {
+      if (state.scraperEngine) state.scraperEngine.resume();
+    });
+    elements.btnScrapeStop.addEventListener('click', () => {
+      if (state.scraperEngine) state.scraperEngine.stop();
+    });
+    document.getElementById('btn-scrape-view-data').addEventListener('click', () => openBrowseData());
+
+    const btnDownloadLog = document.getElementById('btn-download-log');
+    if (btnDownloadLog) {
+      btnDownloadLog.addEventListener('click', () => downloadScrapeLog());
+    }
+  }
+
+  // Full log history (the on-screen log box is capped, this is not).
+  let scrapeLogHistory = [];
+  let scrapeErrorCount = 0;
+  const LOG_BOX_MAX_LINES = 500;
+
+  function downloadScrapeLog() {
+    if (!scrapeLogHistory.length) return;
+    const name = state.currentSitemap ? (state.currentSitemap._id || 'scrape') : 'scrape';
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const blob = new Blob([scrapeLogHistory.join('\n') + '\n'], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, `${name}_log_${stamp}.txt`);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  async function startScraping() {
+    if (!state.currentSitemap) return;
+
+    // Guard against double-start: a second engine would race the first one
+    // and corrupt the metrics/results of the running crawl.
+    if (state.scraperEngine && state.scraperEngine.isRunning) {
+      logScrape(t('scrapeAlreadyRunning'), 'error');
+      return;
+    }
+
+    // Number.isFinite guards let an explicit 0 pass through (|| would
+    // silently replace 0 with the default and force an unwanted delay).
+    const parsedInterval = parseInt(document.getElementById('scrape-request-interval').value, 10);
+    const parsedPageDelay = parseInt(document.getElementById('scrape-page-delay').value, 10);
+    const requestInterval = Number.isFinite(parsedInterval) && parsedInterval >= 0 ? parsedInterval : 2000;
+    const pageLoadDelay = Number.isFinite(parsedPageDelay) && parsedPageDelay >= 0 ? parsedPageDelay : 2000;
+    const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
+
+    elements.scrapeLogBox.innerHTML = '';
+    scrapeLogHistory = [];
+    scrapeErrorCount = 0;
+    if (elements.metricErrors) elements.metricErrors.textContent = '0';
+    logScrape(t('scrapeStarting', { name: state.currentSitemap.name || state.currentSitemap._id }), 'info');
+
+    // Initialize Scraper Engine
+    state.scraperEngine = new ScraperEngine(state.currentSitemap, {
+      requestInterval: requestInterval,
+      pageLoadDelay: pageLoadDelay,
+      maxPages: maxPages,
+      fetcher: createTabOrFetchRunner()
+    });
+
+    // Event listeners
+    state.scraperEngine.on('statusChange', (status) => {
+      updateScrapeMonitorStatus(status);
+    });
+
+    state.scraperEngine.on('pageStart', (data) => {
+      elements.scrapeCurrentUrl.textContent = data.url;
+      logScrape(t('scrapeVisiting', { n: data.queueLength, url: data.url }), 'info');
+    });
+
+    state.scraperEngine.on('recordScraped', () => {
+      elements.metricRecords.textContent = state.scraperEngine.results.length;
+    });
+
+    state.scraperEngine.on('error', (err) => {
+      scrapeErrorCount++;
+      if (elements.metricErrors) elements.metricErrors.textContent = scrapeErrorCount;
+      logScrape(t('scrapeError', { msg: err.error || err.message || err }), 'error');
+    });
+
+    state.scraperEngine.on('finish', async (summary) => {
+      logScrape(t('scrapeFinished', { records: summary.totalRecords, pages: summary.pagesVisited, time: (summary.elapsedMs / 1000).toFixed(1) }), 'success');
+      await AppStorage.saveScrapedData(state.currentSitemap._id, summary.results);
+      openBrowseData();
+    });
+
+    // Start timer loop
+    startElapsedTimer();
+
+    // Run scraper
+    state.scraperEngine.start();
+  }
+
+  function createTabOrFetchRunner() {
+    // If in Chrome extension environment with chrome.tabs API:
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.scripting) {
+      return async (url) => {
+        return new Promise((resolve, reject) => {
+          chrome.tabs.create({ url: url, active: false }, (tab) => {
+            if (chrome.runtime.lastError || !tab) {
+              reject(new Error(chrome.runtime.lastError ? chrome.runtime.lastError.message : 'Failed to create background scraping tab'));
+              return;
+            }
+
+            const tabId = tab.id;
+            let isDone = false;
+            let tabClosed = false;
+
+            const cleanup = () => {
+              try { chrome.tabs.onUpdated.removeListener(onUpdated); } catch (e) {}
+              try { chrome.tabs.onRemoved.removeListener(onRemoved); } catch (e) {}
+              if (!tabClosed) {
+                chrome.tabs.remove(tabId, () => {
+                  if (chrome.runtime.lastError) { /* consume */ }
+                });
+              }
+            };
+
+            const onRemoved = (removedTabId) => {
+              if (removedTabId === tabId) {
+                tabClosed = true;
+                if (!isDone) {
+                  isDone = true;
+                  cleanup();
+                  reject(new Error(`Scraping tab ${tabId} was closed.`));
+                }
+              }
+            };
+            chrome.tabs.onRemoved.addListener(onRemoved);
+
+            const grabOuterHtml = () => {
+              chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                func: () => document.documentElement.outerHTML
+              }, (results) => {
+                const lastErr = chrome.runtime.lastError;
+                cleanup();
+                if (lastErr || !results || !results[0]) {
+                  reject(new Error(lastErr ? lastErr.message : 'Failed to extract HTML from tab'));
+                  return;
+                }
+                try {
+                  const html = results[0].result;
+                  const parser = new DOMParser();
+                  const doc = parser.parseFromString(html, 'text/html');
+                  resolve({ document: doc, url: url });
+                } catch (err) {
+                  reject(err);
+                }
+              });
+            };
+
+            const runPageActionsThenExtract = () => {
+              const selectors = (state.currentSitemap && state.currentSitemap.selectors) || [];
+              const clickSel = selectors.find(s => s.type === 'SelectorElementClick');
+              const scrollSel = selectors.find(s => s.type === 'SelectorElementScroll');
+              const pagClick = selectors.find(s => s.type === 'SelectorPagination' && s.paginationType === 'click');
+              const pagScroll = selectors.find(s => s.type === 'SelectorPagination' && s.paginationType === 'scroll');
+
+              const actions = {};
+              if (clickSel) {
+                actions.click = {
+                  clickElementSelector: clickSel.clickElementSelector || clickSel.selector,
+                  clickType: clickSel.clickType || 'clickMore',
+                  clickDelay: clickSel.clickDelay || 1000
+                };
+              } else if (pagClick) {
+                actions.click = {
+                  clickElementSelector: pagClick.selector,
+                  clickType: 'clickMore',
+                  clickDelay: pagClick.delay || 1000
+                };
+              }
+              if (scrollSel) {
+                actions.scroll = {
+                  scrollElementSelector: scrollSel.scrollElementSelector || '',
+                  scrollDelay: scrollSel.scrollDelay || 1000,
+                  maxScrolls: scrollSel.maxScrolls || 20
+                };
+              } else if (pagScroll) {
+                actions.scroll = {
+                  scrollElementSelector: '',
+                  scrollDelay: pagScroll.delay || 1000,
+                  maxScrolls: pagScroll.maxPages || 20
+                };
+              }
+
+              if (!actions.click && !actions.scroll) {
+                grabOuterHtml();
+                return;
+              }
+
+              chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ['content/scraper_content.js']
+              }, () => {
+                chrome.tabs.sendMessage(tabId, { type: 'EXECUTE_PAGE_ACTIONS', actions }, () => {
+                  if (chrome.runtime.lastError) {
+                    grabOuterHtml();
+                    return;
+                  }
+                  grabOuterHtml();
+                });
+              });
+            };
+
+            const extractHtml = () => {
+              if (isDone) return;
+              isDone = true;
+              try { chrome.tabs.onUpdated.removeListener(onUpdated); } catch (e) {}
+
+              setTimeout(runPageActionsThenExtract, 200);
+            };
+
+            const onUpdated = (updatedTabId, changeInfo) => {
+              if (updatedTabId === tabId && changeInfo.status === 'complete') {
+                extractHtml();
+              }
+            };
+
+            chrome.tabs.onUpdated.addListener(onUpdated);
+
+            // If the tab already finished loading before the listener attached
+            chrome.tabs.get(tabId, (info) => {
+              if (!chrome.runtime.lastError && info && info.status === 'complete') {
+                extractHtml();
+              }
+            });
+          });
+        });
+      };
+    }
+
+    // Default fetch & DOMParser fallback
+    return async (url) => {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      const html = await resp.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      return { document: doc, url: resp.url || url };
+    };
+  }
+
+  let timerInterval = null;
+  function startElapsedTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    const start = Date.now();
+    timerInterval = setInterval(() => {
+      if (!state.scraperEngine || !state.scraperEngine.isRunning) {
+        clearInterval(timerInterval);
+        return;
+      }
+      const secs = Math.floor((Date.now() - start) / 1000);
+      const m = String(Math.floor(secs / 60)).padStart(2, '0');
+      const s = String(secs % 60).padStart(2, '0');
+      elements.metricTime.textContent = `${m}:${s}`;
+    }, 1000);
+  }
+
+  function updateScrapeMonitorStatus(status) {
+    elements.metricPages.textContent = status.pagesVisited;
+    elements.metricRecords.textContent = status.recordsCount;
+    elements.metricQueue.textContent = status.queueSize;
+
+    elements.scrapeStatusBadge.textContent = status.state.toUpperCase();
+    if (status.state === 'running') {
+      elements.scrapeStatusBadge.style.background = 'rgba(16,185,129,0.2)';
+      elements.scrapeStatusBadge.style.color = '#34d399';
+      elements.btnScrapePause.style.display = 'inline-flex';
+      elements.btnScrapeResume.style.display = 'none';
+      elements.btnScrapeStop.style.display = 'inline-flex';
+    } else if (status.state === 'paused') {
+      elements.scrapeStatusBadge.style.background = 'rgba(234,179,8,0.2)';
+      elements.scrapeStatusBadge.style.color = '#facc15';
+      elements.btnScrapePause.style.display = 'none';
+      elements.btnScrapeResume.style.display = 'inline-flex';
+      elements.btnScrapeStop.style.display = 'inline-flex';
+    } else {
+      elements.scrapeStatusBadge.style.background = 'rgba(100,116,139,0.2)';
+      elements.scrapeStatusBadge.style.color = '#94a3b8';
+      elements.btnScrapePause.style.display = 'none';
+      elements.btnScrapeResume.style.display = 'none';
+      elements.btnScrapeStop.style.display = 'none';
+    }
+  }
+
+  function logScrape(msg, level = 'info') {
+    const time = new Date().toLocaleTimeString();
+    const line = `[${time}] ${msg}`;
+    scrapeLogHistory.push(`${level.toUpperCase().padEnd(7)} ${line}`);
+
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${level}`;
+    entry.textContent = line;
+    elements.scrapeLogBox.appendChild(entry);
+    // Cap the on-screen log so very long crawls don't bloat the DOM;
+    // the full history stays available via "Download log".
+    while (elements.scrapeLogBox.children.length > LOG_BOX_MAX_LINES) {
+      elements.scrapeLogBox.removeChild(elements.scrapeLogBox.firstChild);
+    }
+    elements.scrapeLogBox.scrollTop = elements.scrapeLogBox.scrollHeight;
+  }
+
+  // DATA VIEWER & EXPORT CONTROLLER
+  function bindDataViewerEvents() {
+    elements.searchDataInput.addEventListener('input', () => {
+      state.dataPagination.page = 1;
+      filterAndRenderDataTable();
+    });
+
+    document.getElementById('btn-refresh-data').addEventListener('click', () => openBrowseData());
+
+    const btnFr = document.getElementById('btn-toggle-find-replace');
+    if (btnFr) {
+      btnFr.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const bar = document.getElementById('find-replace-bar');
+        if (!bar) return;
+        bar.classList.toggle('open');
+        populateFindColumns();
+      });
+    }
+    const btnFindNext = document.getElementById('btn-find-next');
+    if (btnFindNext) btnFindNext.addEventListener('click', () => findNextInData());
+    const btnReplaceOne = document.getElementById('btn-replace-one');
+    if (btnReplaceOne) btnReplaceOne.addEventListener('click', () => replaceInData(false));
+    const btnReplaceAll = document.getElementById('btn-replace-all');
+    if (btnReplaceAll) btnReplaceAll.addEventListener('click', () => replaceInData(true));
+
+    const colRange = document.getElementById('gallery-columns');
+    if (colRange) {
+      colRange.addEventListener('input', () => {
+        const n = colRange.value;
+        const label = document.getElementById('gallery-columns-label');
+        if (label) label.textContent = n;
+        const grid = document.getElementById('gallery-grid');
+        if (grid) grid.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+        const galleryView = document.getElementById('view-gallery');
+        if (galleryView) galleryView.setAttribute('data-cols', String(n));
+      });
+    }
+    const btnSlide = document.getElementById('btn-start-slideshow');
+    if (btnSlide) btnSlide.addEventListener('click', () => openSlideshow(0));
+    const btnSlideClose = document.getElementById('btn-slideshow-close');
+    if (btnSlideClose) btnSlideClose.addEventListener('click', closeSlideshow);
+    const btnPrev = document.getElementById('btn-slide-prev');
+    if (btnPrev) btnPrev.addEventListener('click', () => stepSlideshow(-1));
+    const btnNext = document.getElementById('btn-slide-next');
+    if (btnNext) btnNext.addEventListener('click', () => stepSlideshow(1));
+    const btnPlay = document.getElementById('btn-slide-play');
+    if (btnPlay) btnPlay.addEventListener('click', toggleSlideshowAutoplay);
+    const btnDownloadSlide = document.getElementById('btn-slide-download');
+    if (btnDownloadSlide) btnDownloadSlide.addEventListener('click', () => downloadCurrentSlide());
+    const btnZipAll = document.getElementById('btn-gallery-zip-all');
+    if (btnZipAll) btnZipAll.addEventListener('click', () => downloadGalleryZip(false));
+    const btnZipSel = document.getElementById('btn-gallery-zip-selected');
+    if (btnZipSel) btnZipSel.addEventListener('click', () => downloadGalleryZip(true));
+    const btnSelAll = document.getElementById('btn-gallery-select-all');
+    if (btnSelAll) btnSelAll.addEventListener('click', () => setGallerySelection(true));
+    const btnSelNone = document.getElementById('btn-gallery-select-none');
+    if (btnSelNone) btnSelNone.addEventListener('click', () => setGallerySelection(false));
+
+    // Auto-hiding slideshow chrome. The cursor is hidden together with the
+    // controls (via the `idle` class) so nothing floats over the image.
+    let chromeHideTimer = null;
+    function pulseSlideshowChrome() {
+      const chromeEl = document.getElementById('slideshow-chrome');
+      const overlay = document.getElementById('slideshow-overlay');
+      if (!chromeEl) return;
+      chromeEl.classList.add('show');
+      if (overlay) overlay.classList.remove('idle');
+      clearTimeout(chromeHideTimer);
+      chromeHideTimer = setTimeout(() => {
+        // Keep the bar up while the pointer rests on an actual control.
+        if (typeof chromeEl.matches === 'function' && chromeEl.matches(':hover')) {
+          pulseSlideshowChrome();
+          return;
+        }
+        chromeEl.classList.remove('show');
+        if (overlay) overlay.classList.add('idle');
+      }, 2000);
+    }
+    function cancelSlideshowChromeTimer() {
+      clearTimeout(chromeHideTimer);
+      chromeHideTimer = null;
+    }
+    window.__wsPulseSlideshowChrome = pulseSlideshowChrome;
+    window.__wsCancelSlideshowChrome = cancelSlideshowChromeTimer;
+
+    const overlayEl = document.getElementById('slideshow-overlay');
+    if (overlayEl) {
+      // Only a real pointer move should wake the chrome back up; hiding the
+      // cursor itself must not be able to re-trigger this handler.
+      let lastX = null;
+      let lastY = null;
+      overlayEl.addEventListener('mousemove', (e) => {
+        if (e.clientX === lastX && e.clientY === lastY) return;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        pulseSlideshowChrome();
+      });
+
+      // Mouse wheel navigates between images.
+      overlayEl.addEventListener('wheel', (e) => {
+        if (!overlayEl.classList.contains('open')) return;
+        e.preventDefault();
+        const delta = e.deltaY || e.deltaX || 0;
+        if (!delta) return;
+        const now = Date.now();
+        // Trackpads emit long inertial streams — throttle to one step.
+        if (now - lastWheelAt < 120) return;
+        lastWheelAt = now;
+        stepSlideshow(delta > 0 ? 1 : -1);
+        pulseSlideshowChrome();
+      }, { passive: false });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const overlay = document.getElementById('slideshow-overlay');
+      if (!overlay || !overlay.classList.contains('open')) return;
+      if (e.key === 'Escape') closeSlideshow();
+      if (e.key === 'ArrowRight') { stepSlideshow(1); pulseSlideshowChrome(); }
+      if (e.key === 'ArrowLeft') { stepSlideshow(-1); pulseSlideshowChrome(); }
+      if (e.key === ' ') { e.preventDefault(); toggleSlideshowAutoplay(); pulseSlideshowChrome(); }
+    });
+
+    document.getElementById('btn-export-csv-direct').addEventListener('click', () => {
+      if (state.currentSitemap && state.scrapedData.length > 0) {
+        Exporter.downloadCSV(state.scrapedData, state.currentSitemap.name);
+      }
+    });
+
+    document.getElementById('btn-export-excel-direct').addEventListener('click', () => {
+      if (state.currentSitemap && state.scrapedData.length > 0) {
+        Exporter.downloadExcel(state.scrapedData, state.currentSitemap.name);
+      }
+    });
+
+    document.getElementById('btn-clear-data').addEventListener('click', async () => {
+      if (state.currentSitemap && confirm(t('confirmClearData', { name: state.currentSitemap.name || state.currentSitemap._id }))) {
+        await AppStorage.clearScrapedData(state.currentSitemap._id);
+        openBrowseData();
+      }
+    });
+
+    elements.btnDataPrevPage.addEventListener('click', () => {
+      if (state.dataPagination.page > 1) {
+        state.dataPagination.page--;
+        renderDataTablePage();
+      }
+    });
+
+    elements.btnDataNextPage.addEventListener('click', () => {
+      const maxPage = Math.ceil(state.filteredData.length / state.dataPagination.pageSize);
+      if (state.dataPagination.page < maxPage) {
+        state.dataPagination.page++;
+        renderDataTablePage();
+      }
+    });
+
+    // Page size selector — keep the first visible row in view when resizing.
+    const pageSizeSel = document.getElementById('data-page-size');
+    if (pageSizeSel) {
+      pageSizeSel.addEventListener('change', () => {
+        const newSize = parseInt(pageSizeSel.value, 10) || 25;
+        const firstVisibleIndex = (state.dataPagination.page - 1) * state.dataPagination.pageSize;
+        state.dataPagination.pageSize = newSize;
+        state.dataPagination.page = Math.floor(firstVisibleIndex / newSize) + 1;
+        renderDataTablePage();
+      });
+    }
+
+    // Export View Buttons
+    document.getElementById('btn-download-csv').addEventListener('click', () => {
+      const delimiter = document.getElementById('export-csv-delimiter').value;
+      if (state.currentSitemap && state.scrapedData.length > 0) {
+        Exporter.downloadCSV(state.scrapedData, state.currentSitemap.name, delimiter);
+      }
+    });
+
+    document.getElementById('btn-download-excel').addEventListener('click', () => {
+      if (state.currentSitemap && state.scrapedData.length > 0) {
+        Exporter.downloadExcel(state.scrapedData, state.currentSitemap.name);
+      }
+    });
+
+    document.getElementById('btn-download-json').addEventListener('click', () => {
+      if (state.currentSitemap && state.scrapedData.length > 0) {
+        Exporter.downloadJSON(state.scrapedData, state.currentSitemap.name);
+      }
+    });
+
+    const btnTsv = document.getElementById('btn-download-tsv');
+    if (btnTsv) {
+      btnTsv.addEventListener('click', () => {
+        if (state.currentSitemap && state.scrapedData.length > 0) {
+          Exporter.downloadTSV(state.scrapedData, state.currentSitemap.name);
+        }
+      });
+    }
+
+    const btnNdjson = document.getElementById('btn-download-ndjson');
+    if (btnNdjson) {
+      btnNdjson.addEventListener('click', () => {
+        if (state.currentSitemap && state.scrapedData.length > 0) {
+          Exporter.downloadNDJSON(state.scrapedData, state.currentSitemap.name);
+        }
+      });
+    }
+
+    const btnCopyCsv = document.getElementById('btn-copy-data-csv');
+    if (btnCopyCsv) {
+      btnCopyCsv.addEventListener('click', async () => {
+        // Copy the currently filtered view so search results can be copied too.
+        const rows = state.filteredData.length ? state.filteredData : state.scrapedData;
+        if (!rows.length) return;
+        const csv = Exporter.toCSV(rows, { bom: false });
+        try {
+          await navigator.clipboard.writeText(csv);
+          alert(t('copiedCsv', { n: rows.length }));
+        } catch (e) {
+          console.warn('Clipboard write failed:', e);
+        }
+      });
+    }
+  }
+
+  async function openBrowseData() {
+    if (!state.currentSitemap) return;
+    try {
+      state.scrapedData = await AppStorage.getScrapedData(state.currentSitemap._id);
+    } catch (e) {
+      console.error('Failed to get scraped data:', e);
+      state.scrapedData = [];
+    }
+    state.dataPagination.page = 1;
+    filterAndRenderDataTable();
+    switchView('browse-data');
+  }
+
+  function filterAndRenderDataTable() {
+    const query = (elements.searchDataInput.value || '').toLowerCase().trim();
+
+    if (!query) {
+      state.filteredData = [...state.scrapedData];
+    } else {
+      state.filteredData = state.scrapedData.filter(row => {
+        return Object.values(row).some(val => String(val).toLowerCase().includes(query));
+      });
+    }
+
+    // Sort if column set
+    if (state.dataPagination.sortCol) {
+      const col = state.dataPagination.sortCol;
+      const asc = state.dataPagination.sortAsc;
+      state.filteredData.sort((a, b) => {
+        const vA = a[col] !== undefined ? a[col] : '';
+        const vB = b[col] !== undefined ? b[col] : '';
+        if (typeof vA === 'number' && typeof vB === 'number') {
+          return asc ? vA - vB : vB - vA;
+        }
+        return asc ? String(vA).localeCompare(String(vB)) : String(vB).localeCompare(String(vA));
+      });
+    }
+
+    elements.browseRecordCountBadge.textContent = t('nRecords', { n: state.scrapedData.length });
+    renderDataTablePage();
+  }
+
+  function renderDataTablePage() {
+    elements.theadScrapedData.innerHTML = '';
+    elements.tbodyScrapedData.innerHTML = '';
+
+    if (state.filteredData.length === 0) {
+      elements.tbodyScrapedData.innerHTML = `
+        <tr>
+          <td colspan="10">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg>
+              <div class="empty-state-title">${t('noScrapedData')}</div>
+              <div>${t('noScrapedHint')}</div>
+            </div>
+          </td>
+        </tr>
+      `;
+      elements.dataPageStart.textContent = '0';
+      elements.dataPageEnd.textContent = '0';
+      elements.dataPageTotal.textContent = '0';
+      elements.dataPageCurrentNum.textContent = t('page1');
+      return;
+    }
+
+    const headers = Object.keys(state.filteredData[0]);
+
+    // Render Table Header
+    const trHead = document.createElement('tr');
+    headers.forEach(h => {
+      const th = document.createElement('th');
+      th.className = 'sortable';
+      th.textContent = h;
+      if (state.dataPagination.sortCol === h) {
+        th.textContent += state.dataPagination.sortAsc ? ' ▲' : ' ▼';
+      }
+      th.addEventListener('click', () => {
+        if (state.dataPagination.sortCol === h) {
+          state.dataPagination.sortAsc = !state.dataPagination.sortAsc;
+        } else {
+          state.dataPagination.sortCol = h;
+          state.dataPagination.sortAsc = true;
+        }
+        filterAndRenderDataTable();
+      });
+      trHead.appendChild(th);
+    });
+    // Row actions column (delete)
+    const thActions = document.createElement('th');
+    thActions.style.width = '40px';
+    trHead.appendChild(thActions);
+    elements.theadScrapedData.appendChild(trHead);
+
+    // Paginate rows
+    const pageSize = state.dataPagination.pageSize;
+    const page = state.dataPagination.page;
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, state.filteredData.length);
+    const pageRows = state.filteredData.slice(startIndex, endIndex);
+
+    pageRows.forEach(row => {
+      const tr = document.createElement('tr');
+      headers.forEach(h => {
+        const td = document.createElement('td');
+        const val = row[h] !== undefined ? row[h] : '';
+        td.textContent = String(val);
+        td.title = String(val);
+        td.contentEditable = 'true';
+        td.dataset.col = h;
+        td.addEventListener('blur', async () => {
+          row[h] = td.textContent;
+          if (state.currentSitemap) {
+            await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+          }
+        });
+        tr.appendChild(td);
+      });
+
+      // Delete-row button
+      const tdDel = document.createElement('td');
+      tdDel.style.textAlign = 'center';
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn btn-danger btn-sm row-delete-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = t('deleteRow');
+      delBtn.addEventListener('click', async () => {
+        if (!confirm(t('confirmDeleteRow'))) return;
+        const masterIdx = state.scrapedData.indexOf(row);
+        if (masterIdx >= 0) state.scrapedData.splice(masterIdx, 1);
+        if (state.currentSitemap) {
+          await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        }
+        // Keep the current page valid after removal.
+        const maxPage = Math.max(1, Math.ceil(Math.max(0, state.filteredData.length - 1) / state.dataPagination.pageSize));
+        if (state.dataPagination.page > maxPage) state.dataPagination.page = maxPage;
+        filterAndRenderDataTable();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+      elements.tbodyScrapedData.appendChild(tr);
+    });
+
+    populateFindColumns(headers);
+
+    // Update pagination labels
+    elements.dataPageStart.textContent = startIndex + 1;
+    elements.dataPageEnd.textContent = endIndex;
+    elements.dataPageTotal.textContent = state.filteredData.length;
+    elements.dataPageCurrentNum.textContent = t('pageOf', { page: page, total: Math.ceil(state.filteredData.length / pageSize) });
+  }
+
+  // SELECTOR HIERARCHY GRAPH
+  function renderSelectorGraph() {
+    if (!state.currentSitemap || !elements.graphContainer) return;
+    const graph = new SelectorGraph(elements.graphContainer, state.currentSitemap, {
+      onNodeClick: (selId) => {
+        openEditSelector(selId);
+      }
+    });
+    graph.render();
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function looksLikeImageUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    const u = url.trim();
+    if (!/^https?:\/\//i.test(u)) return false;
+    if (/\.(jpe?g|png|gif|webp|avif|bmp|svg)(\?|#|$)/i.test(u)) return true;
+    if (/[?&](format|fm)=(jpe?g|png|webp|gif)/i.test(u)) return true;
+    return /\/(image|img|photos?|media|cdn|thumb)/i.test(u);
+  }
+
+  function collectGalleryItems(records) {
+    const items = [];
+    const seen = new Set();
+    (records || []).forEach((row, rowIdx) => {
+      Object.keys(row).forEach((key) => {
+        const val = row[key];
+        const parts = Array.isArray(val) ? val : [val];
+        parts.forEach((p) => {
+          const url = String(p || '').trim();
+          if (!url || seen.has(url)) return;
+          const keyHint = /image|img|src|photo|thumb/i.test(key);
+          if (looksLikeImageUrl(url) || (keyHint && /^https?:\/\//i.test(url))) {
+            seen.add(url);
+            items.push({ rowIdx, key, url });
+          }
+        });
+      });
+    });
+    return items;
+  }
+
+  async function openGallery() {
+    if (!state.currentSitemap) return;
+    try {
+      state.scrapedData = await AppStorage.getScrapedData(state.currentSitemap._id);
+    } catch (e) {
+      state.scrapedData = [];
+    }
+    switchView('gallery');
+  }
+
+  function setGallerySelection(selected) {
+    document.querySelectorAll('#gallery-grid .gallery-select').forEach((chk) => {
+      chk.checked = selected;
+      const card = chk.closest('.gallery-card');
+      if (card) card.classList.toggle('selected', selected);
+    });
+    updateGallerySelectionBadge();
+  }
+
+  function updateGallerySelectionBadge() {
+    const badge = document.getElementById('gallery-selected-badge');
+    if (!badge) return;
+    const n = document.querySelectorAll('#gallery-grid .gallery-select:checked').length;
+    badge.style.display = n > 0 ? 'inline-block' : 'none';
+    badge.textContent = t('nSelected', { n: n });
+  }
+
+  function renderGallery() {
+    const grid = document.getElementById('gallery-grid');
+    const badge = document.getElementById('gallery-count-badge');
+    if (!grid) return;
+    state.galleryItems = collectGalleryItems(state.scrapedData);
+    if (badge) badge.textContent = t('nImages', { n: state.galleryItems.length });
+    const cols = (document.getElementById('gallery-columns') || {}).value || 4;
+    grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    const galleryView = document.getElementById('view-gallery');
+    if (galleryView) galleryView.setAttribute('data-cols', String(cols));
+    grid.innerHTML = '';
+    if (state.galleryItems.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">' + t('noImages') + '</div><div>' + t('noImagesHint') + '</div></div>';
+      return;
+    }
+    state.galleryItems.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'gallery-card';
+      const img = document.createElement('img');
+      img.setAttribute('loading', 'lazy'); // avoid loading hundreds of off-screen images at once
+      img.setAttribute('decoding', 'async');
+      img.src = item.url;
+      img.alt = '';
+      img.addEventListener('click', () => openSlideshow(idx));
+      const meta = document.createElement('div');
+      meta.className = 'gallery-meta';
+      const input = document.createElement('input');
+      input.className = 'form-control gallery-url';
+      input.value = item.url;
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.gap = '6px';
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'btn btn-secondary btn-sm';
+      saveBtn.textContent = t('saveUrl');
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn btn-danger btn-sm';
+      delBtn.textContent = t('delete');
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.className = 'gallery-select';
+      chk.addEventListener('change', () => {
+        card.classList.toggle('selected', chk.checked);
+        updateGallerySelectionBadge();
+      });
+      saveBtn.addEventListener('click', async () => {
+        const next = input.value.trim();
+        const rec = state.scrapedData[item.rowIdx];
+        if (rec) rec[item.key] = next;
+        item.url = next;
+        if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        renderGallery();
+      });
+      delBtn.addEventListener('click', async () => {
+        const rec = state.scrapedData[item.rowIdx];
+        if (rec) rec[item.key] = '';
+        if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        renderGallery();
+      });
+      actions.appendChild(saveBtn);
+      actions.appendChild(delBtn);
+      meta.appendChild(input);
+      meta.appendChild(actions);
+      card.appendChild(chk);
+      card.appendChild(img);
+      card.appendChild(meta);
+      grid.appendChild(card);
+    });
+    updateGallerySelectionBadge();
+  }
+
+  let slideIndex = 0;
+  let slideTimer = null;
+  let slidePlaying = false;
+  let lastWheelAt = 0;
+
+  function openSlideshow(index) {
+    if (!state.galleryItems.length) renderGallery();
+    if (!state.galleryItems.length) return;
+    slideIndex = Math.max(0, Math.min(index || 0, state.galleryItems.length - 1));
+    slidePlaying = false;
+    const overlay = document.getElementById('slideshow-overlay');
+    if (!overlay) return;
+    overlay.hidden = false;
+    overlay.classList.add('open');
+    overlay.classList.remove('idle');
+    if (window.__wsPulseSlideshowChrome) window.__wsPulseSlideshowChrome();
+    const play = document.getElementById('btn-slide-play');
+    if (play) play.textContent = '▶';
+    showSlide();
+  }
+
+  function showSlide() {
+    const items = state.galleryItems;
+    if (!items.length) return;
+    const item = items[slideIndex];
+    const img = document.getElementById('slideshow-image');
+    if (!img) return;
+    const trSel = (document.getElementById('slideshow-transition') || {}).value || 'fade';
+    img.classList.remove('tr-fade', 'tr-slide', 'tr-zoom');
+    void img.offsetWidth;
+    img.src = item.url;
+    if (trSel !== 'none') img.classList.add('tr-' + trSel);
+    const counter = document.getElementById('slideshow-counter');
+    if (counter) counter.textContent = (slideIndex + 1) + ' / ' + items.length;
+  }
+
+  function stepSlideshow(dir) {
+    if (!state.galleryItems.length) return;
+    slideIndex = (slideIndex + dir + state.galleryItems.length) % state.galleryItems.length;
+    showSlide();
+  }
+
+  function restartSlideTimer() {
+    if (slideTimer) clearInterval(slideTimer);
+    slideTimer = null;
+    if (!slidePlaying) return;
+    const sec = parseInt((document.getElementById('slideshow-interval') || {}).value, 10) || 4;
+    slideTimer = setInterval(() => stepSlideshow(1), Math.max(1, sec) * 1000);
+  }
+
+  function toggleSlideshowAutoplay() {
+    slidePlaying = !slidePlaying;
+    const play = document.getElementById('btn-slide-play');
+    if (play) {
+      play.textContent = slidePlaying ? '❚❚' : '▶';
+      const label = t(slidePlaying ? 'pauseSlide' : 'play');
+      play.setAttribute('title', label);
+      play.setAttribute('aria-label', label);
+      play.setAttribute('data-i18n-title', slidePlaying ? 'pauseSlide' : 'play');
+    }
+    restartSlideTimer();
+  }
+
+  function closeSlideshow() {
+    const overlay = document.getElementById('slideshow-overlay');
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.classList.remove('open');
+      overlay.classList.remove('idle');
+    }
+    const chromeEl = document.getElementById('slideshow-chrome');
+    if (chromeEl) chromeEl.classList.remove('show');
+    if (window.__wsCancelSlideshowChrome) window.__wsCancelSlideshowChrome();
+    slidePlaying = false;
+    if (slideTimer) clearInterval(slideTimer);
+    slideTimer = null;
+  }
+
+  /**
+   * Builds a sensible file name for a single image URL.
+   */
+  function imageFilenameFromUrl(url, index) {
+    let base = '';
+    let ext = '';
+    try {
+      const clean = String(url).split('#')[0].split('?')[0];
+      base = decodeURIComponent(clean.substring(clean.lastIndexOf('/') + 1));
+    } catch (e) {
+      base = '';
+    }
+    const dot = base.lastIndexOf('.');
+    if (dot > 0) {
+      ext = base.substring(dot + 1).toLowerCase();
+      base = base.substring(0, dot);
+    }
+    if (!/^[a-z0-9]{2,5}$/.test(ext)) ext = 'jpg';
+    base = base.replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
+    if (!base) base = 'image-' + String((index || 0) + 1).padStart(3, '0');
+    return base + '.' + ext;
+  }
+
+  /**
+   * Downloads the image currently shown in the slideshow as a plain image
+   * file (not a ZIP archive).
+   */
+  async function downloadCurrentSlide() {
+    const items = state.galleryItems || [];
+    const item = items[slideIndex];
+    if (!item || !item.url) return;
+    const filename = imageFilenameFromUrl(item.url, slideIndex);
+
+    // Fetch into a blob so the file is saved rather than opened in a tab,
+    // and so cross-origin URLs still honour the download attribute.
+    try {
+      const resp = await fetch(item.url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      triggerDownload(objectUrl, filename);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+    } catch (e) {
+      // Fallback: let the browser download straight from the source URL.
+      triggerDownload(item.url, filename);
+    }
+  }
+
+  function triggerDownload(href, filename) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  async function downloadGalleryZip(selectedOnly) {
+    if (typeof SimpleZip === 'undefined') return;
+    let items = state.galleryItems || [];
+    if (selectedOnly) {
+      const checks = document.querySelectorAll('#gallery-grid .gallery-select:checked');
+      const urls = new Set();
+      checks.forEach((c) => {
+        const card = c.closest('.gallery-card');
+        const im = card && card.querySelector('img');
+        if (im) urls.add(im.src);
+      });
+      items = items.filter((it) => urls.has(it.url));
+    }
+    if (!items.length) return;
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+      try {
+        const resp = await fetch(items[i].url);
+        const buf = await resp.arrayBuffer();
+        const ext = (items[i].url.split('?')[0].match(/\.([a-z0-9]+)$/i) || [null, 'jpg'])[1];
+        files.push({ name: 'img-' + String(i + 1).padStart(3, '0') + '.' + ext, data: new Uint8Array(buf) });
+      } catch (e) {}
+    }
+    if (!files.length) return;
+    const zipBytes = await SimpleZip.build(files);
+    const blob = new Blob([zipBytes], { type: 'application/zip' });
+    const objectUrl = URL.createObjectURL(blob);
+    triggerDownload(objectUrl, 'gallery.zip');
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+  }
+
+  function populateFindColumns(headers) {
+    const sel = document.getElementById('find-column');
+    if (!sel) return;
+    const cols = headers || (state.filteredData[0] ? Object.keys(state.filteredData[0]) : []);
+    const current = sel.value;
+    sel.innerHTML = '<option value="">' + t('allColumns') + '</option>';
+    cols.forEach((c) => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+  }
+
+  function buildFindRegex() {
+    const raw = (document.getElementById('find-text') || {}).value || '';
+    if (!raw) return null;
+    const caseSensitive = document.getElementById('find-case') && document.getElementById('find-case').checked;
+    const whole = document.getElementById('find-word') && document.getElementById('find-word').checked;
+    const asRegex = document.getElementById('find-regex') && document.getElementById('find-regex').checked;
+    try {
+      let source = asRegex ? raw : raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (whole) source = '\\b' + source + '\\b';
+      return new RegExp(source, caseSensitive ? 'g' : 'gi');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  let findPos = 0;
+  function findNextInData() {
+    const re = buildFindRegex();
+    const status = document.getElementById('find-replace-status');
+    if (!re) { if (status) status.textContent = t('enterFind'); return; }
+    const col = (document.getElementById('find-column') || {}).value || '';
+    const rows = state.filteredData;
+    for (let i = 0; i < rows.length; i++) {
+      const idx = (findPos + i) % rows.length;
+      const row = rows[idx];
+      const keys = col ? [col] : Object.keys(row);
+      for (const k of keys) {
+        const val = String(row[k] != null ? row[k] : '');
+        re.lastIndex = 0;
+        if (re.test(val)) {
+          findPos = (idx + 1) % rows.length;
+          state.dataPagination.page = Math.floor(idx / state.dataPagination.pageSize) + 1;
+          renderDataTablePage();
+          highlightFindCell(idx, k);
+          if (status) status.textContent = t('matchIn', { row: idx + 1, col: k });
+          return;
+        }
+      }
+    }
+    if (status) status.textContent = t('noMatches');
+  }
+
+  function highlightFindCell(filteredIndex, col) {
+    const start = (state.dataPagination.page - 1) * state.dataPagination.pageSize;
+    const local = filteredIndex - start;
+    const tr = elements.tbodyScrapedData.children[local];
+    if (!tr) return;
+    Array.from(tr.children).forEach((td) => {
+      if (td.dataset.col === col) {
+        td.style.background = 'rgba(250, 204, 21, 0.25)';
+        td.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  async function replaceInData(all) {
+    const re = buildFindRegex();
+    const status = document.getElementById('find-replace-status');
+    const replacement = (document.getElementById('replace-text') || {}).value || '';
+    if (!re) { if (status) status.textContent = t('enterFind'); return; }
+    const col = (document.getElementById('find-column') || {}).value || '';
+    let count = 0;
+    const apply = (row) => {
+      const keys = col ? [col] : Object.keys(row);
+      keys.forEach((k) => {
+        const val = String(row[k] != null ? row[k] : '');
+        re.lastIndex = 0;
+        if (!re.test(val)) return;
+        re.lastIndex = 0;
+        if (all) {
+          row[k] = val.replace(re, replacement);
+          count++;
+        } else if (count === 0) {
+          row[k] = val.replace(re, replacement);
+          count++;
+        }
+      });
+    };
+    if (all) {
+      state.scrapedData.forEach(apply);
+    } else {
+      const start = findPos;
+      for (let i = 0; i < state.filteredData.length && count === 0; i++) {
+        const idx = (start + i) % state.filteredData.length;
+        apply(state.filteredData[idx]);
+        if (count) findPos = (idx + 1) % state.filteredData.length;
+      }
+    }
+    if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+    filterAndRenderDataTable();
+    if (status) status.textContent = all ? t('replacedFields', { n: count }) : (count ? t('replacedOne') : t('noMatches'));
+  }
+
+  // Initialize App on DOM Ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
