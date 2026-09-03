@@ -54,7 +54,7 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 
 | ID | Özellik | Açıklama | Çaba |
 |----|---------|----------|------|
-| **F10** | **XML & Google Sheets İhracatı** | Google Sheets `IMPORTXML` ile uyumlu XML ihraç formatı, plus "Copy as cURL" özelliği mevcut çıkarma konfigürasyonu için. XML dosyası yerel olarak oluşturulur, Google Sheets'e yüklenmeden önce önizleme yapılır. | Orta |
+| **F10** | **XML & Google Sheets İhracatı ✅** | Google Sheets `IMPORTXML` ile uyumlu XML ihraç formatı, plus "Copy as cURL" özelliği mevcut çıkarma konfigürasyonu için. XML dosyası yerel olarak oluşturulur, Google Sheets'e yüklenmeden önce önizleme yapılır. | Orta |
 | **F11** | **Toplu Veri Dönüşümü** | Post-scrape dönüşümler: boşlukları kestirme, URL'leri normalleştirme, regex değiştirme, küçük/büyük harf, ve sütun başına custom JavaScript parçacıkları. TAMAMEN YEREL - JavaScript engine içinde çalışır. | Yüksek |
 | **F12** | **Kural Tabanlı Dinamik Veri Tespiti** | Kural tabanlı (regex/pattern matching) tespit of dinamik olarak yüklenen veriler (fiyatlar AJAX ile güncelliyor, review sayısı, stok durumu) ve önerilen selector üretme. **YEREL AI YOK** - sadece regex/pattern kuralları kullanılır, dışarıdaki AI servisi yok. | Yüksek |
 
