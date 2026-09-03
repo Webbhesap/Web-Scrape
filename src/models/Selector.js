@@ -194,6 +194,23 @@
         delay: 0,
         multiple: true
       }
+    },
+    // NEW: XPath Selector
+    SelectorXPath: {
+      type: 'SelectorXPath',
+      title: 'XPath',
+      description: 'Extracts data using XPath expressions. Supports both text and attribute extraction.',
+      icon: 'code',
+      acceptsChildren: false,
+      isLink: false,
+      isContainer: false,
+      defaultConfig: {
+        xpath: '',
+        extractAttribute: '', // empty = text, otherwise attribute name
+        regex: '',
+        delay: 0,
+        multiple: false
+      }
     }
   };
 
