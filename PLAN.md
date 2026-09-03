@@ -47,7 +47,7 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 |----|---------|----------|------|
 | **F6** | **Duygun Popup & Dashboard ✅** | Popup ve dashboard layout'larını dar ekranlar için uygun yapma (örnek: dikey sidebar, gömülü DevTools). Şu bazı yerlerde fixed-width. | Düşük |
 | **F7** | **Klavye Navigasyon & Erişilebilirlik Çaprazı ✅** | Tam klavye navigasyonu (Tab/Shift-Tab), ARIA etiketleri, fokus yönetimi, ekran okuyucu uyumu forselector picker, gallery ve data table. | Orta |
-| **F8** | **Tema Değişici (Koyu/Gün/Yüksek-Erkiçe)** | Otomatik `color-scheme: dark`'in yanında manuel tema değiştirici ekleyin, özelleştirilebilir renk değişkenleri ve storage'a kalıcılık. TAMAMEN YEREL - storage'da renk ayarları saklanır. | Orta |
+| **F8** | **Tema Değişici (Koyu/Gün/Yüksek-Erkiçe) ✅** | Otomatik `color-scheme: dark`'in yanında manuel tema değiştirici ekleyin, özelleştirilebilir renk değişkenleri ve storage'a kalıcılık. TAMAMEN YEREL - storage'da renk ayarları saklanır. | Orta |
 | **F9** | **Sürükle ve Bırak Seçici İçe Aktarıma** | Kullanıcılar OS dosya gezgininden JSON sitemap dosyasını dashboard veya popup'ına sürükleyerek içeri aktarabilir, "İçe Aktar" butonu iletişim kutusundan ziyade. TAMAMEN YEREL - dosya okuma File API ile. | Düşük |
 
 ### Faiz 3: İhracat & Veri Kullanımı (Yerel)
