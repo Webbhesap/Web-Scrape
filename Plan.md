@@ -27,16 +27,16 @@ dışa bağımlı (harici) API içermez. Yalnızca saf HTML + CSS + Vanilla Java
 
 ---
 
-## Geliştirilecek Özellikler (sırasıyla uygulanacak)
+## Geliştirilecek Özellikler (sırasıyla uygulandı — tümü TAMAMLANDI ✅)
 
-### Özellik 1 — Veri Görüntüleyici: Sayfa boyutu seçici ve satır silme
+### Özellik 1 — Veri Görüntüleyici: Sayfa boyutu seçici ve satır silme ✅
 Mevcut veri tablosu 25 kayıtlık sabit sayfa boyutuyla çalışıyor ve satır silinemiyor.
 - Sayfa boyutu seçici: **25 / 50 / 100 / 250** kayıt.
 - Her satıra **satır silme** düğmesi; silme kalıcı olarak depoya yazılır.
 - Sayfa boyutu değişince geçerli sayfa akıllıca korunur (taşma durumunda son sayfaya gidilir).
 - i18n: EN + TR etiketleri.
 
-### Özellik 2 — Dışa Aktarma: TSV ve NDJSON (JSON Lines) formatları + panoya kopyalama
+### Özellik 2 — Dışa Aktarma: TSV ve NDJSON (JSON Lines) formatları + panoya kopyalama ✅
 Mevcut dışa aktarma CSV / Excel / JSON ile sınırlı.
 - **TSV** (`.tsv`, sekme ayraçlı) dışa aktarma.
 - **NDJSON / JSON Lines** (`.ndjson`, satır başına bir JSON kaydı) dışa aktarma — büyük veri
@@ -44,26 +44,26 @@ Mevcut dışa aktarma CSV / Excel / JSON ile sınırlı.
 - "Browse Data" görünümüne **panoya CSV kopyala** düğmesi.
 - `Exporter` sınıfına saf fonksiyonlar olarak eklenir; birim testleri yazılır.
 
-### Özellik 3 — Sitemap Yedekleme: Tümünü dışa/içe aktarma
+### Özellik 3 — Sitemap Yedekleme: Tümünü dışa/içe aktarma ✅
 Mevcut içe/dışa aktarma tek sitemap ile sınırlı.
 - **Tüm sitemap'leri tek JSON dosyası** (`webscraper_backup_YYYY-MM-DD.json`) olarak indirme.
 - Aynı dosyayı **içe aktarma**: tekli sitemap JSON'u da, yedek dizisi de kabul edilir;
   çakışan kimlikler üzerine yazılır, sonuç raporlanır.
 - Sitemaps listesi araç çubuğuna "Tümünü Dışa Aktar" düğmesi.
 
-### Özellik 4 — URL Aralığı Önizleme (Sitemap Meta formu)
+### Özellik 4 — URL Aralığı Önizleme (Sitemap Meta formu) ✅
 `[1-100]` gibi kalıplar yazarken kullanıcı kaç URL üretileceğini göremiyor.
 - Başlangıç URL alanının altında **canlı önizleme**: üretilecek toplam URL sayısı ve
   ilk 5 örnek URL.
 - 100.000 tavanına ulaşıldığında uyarı gösterilir.
 - Tamamen istemci tarafında, `UrlRangeExpander` ile hesaplanır.
 
-### Özellik 5 — Galeri İyileştirmeleri
+### Özellik 5 — Galeri İyileştirmeleri ✅
 - Görseller **`loading="lazy"`** ile tembel yüklenir (yüzlerce görselde performans).
 - **Tümünü seç / Seçimi temizle** düğmeleri (ZIP'e seçili indirme ile birlikte çalışır).
 - Seçili görsel sayısı rozeti.
 
-### Özellik 6 — Kazıma Monitörü: Hata metriği ve günlük indirme
+### Özellik 6 — Kazıma Monitörü: Hata metriği ve günlük indirme ✅
 - Metrik kartlarına **Hata sayacı** eklenir (başarısız sayfa/istek sayısı).
 - **Günlüğü indir** düğmesi: etkinlik günlüğünü zaman damgalı `.txt` olarak kaydeder.
 - Günlük kutusu 500 satırla sınırlanır (uzun kazımalarda DOM şişmesini önler).
@@ -76,3 +76,18 @@ Mevcut içe/dışa aktarma tek sitemap ile sınırlı.
    regresyon testi eklenir.
 3. `devtools/panel.html`, `dashboard.html` değiştiğinde `npm run build:panel` ile yeniden üretilir.
 4. Hiçbir özellik ağ tabanlı üçüncü taraf servis, uzak API veya yapay zekâ bileşeni içermez.
+
+---
+
+## Test Durumu
+
+| Aşama | Test Dosyası | Sonuç |
+|-------|--------------|-------|
+| Hata düzeltmeleri | `test/engine_fixes.test.js` (7 test) | ✅ |
+| Özellik 1 | `test/data_viewer_features.test.js` (2 test) | ✅ |
+| Özellik 2 | `test/export_formats.test.js` (4 test) | ✅ |
+| Özellik 3 | `test/sitemap_backup.test.js` (4 test) | ✅ |
+| Özellik 4 | `test/url_preview.test.js` (2 test) | ✅ |
+| Özellik 5 | `test/gallery_features.test.js` (2 test) | ✅ |
+| Özellik 6 | `test/scrape_monitor.test.js` (3 test) | ✅ |
+| **Toplam paket** | `npm test` | **97 / 97 geçti** ✅ |

@@ -186,6 +186,7 @@
     elements.metricRecords = document.getElementById('metric-records');
     elements.metricQueue = document.getElementById('metric-queue');
     elements.metricTime = document.getElementById('metric-time');
+    elements.metricErrors = document.getElementById('metric-errors');
     elements.scrapeCurrentUrl = document.getElementById('scrape-current-url');
     elements.scrapeLogBox = document.getElementById('scrape-log-box');
     elements.btnScrapePause = document.getElementById('btn-scrape-pause');
@@ -262,6 +263,17 @@
     document.getElementById('btn-quick-new-sitemap').addEventListener('click', () => openCreateSitemapMeta());
     document.getElementById('btn-sitemaps-create').addEventListener('click', () => openCreateSitemapMeta());
     document.getElementById('btn-sitemaps-import').addEventListener('click', () => openImportSitemap());
+    const btnExportAll = document.getElementById('btn-sitemaps-export-all');
+    if (btnExportAll) {
+      btnExportAll.addEventListener('click', async () => {
+        const sitemaps = await AppStorage.getAllSitemaps();
+        if (!sitemaps.length) {
+          alert(t('noSitemaps'));
+          return;
+        }
+        Exporter.downloadAllSitemaps(sitemaps);
+      });
+    }
 
     // Nav Current Sitemap items
     document.getElementById('nav-sitemap-selectors').addEventListener('click', () => {
@@ -675,6 +687,15 @@
       saveSitemapMetaForm();
     });
 
+    // Live URL range expansion preview (debounced to keep typing responsive).
+    if (elements.fieldSitemapUrls) {
+      let urlPreviewTimer = null;
+      elements.fieldSitemapUrls.addEventListener('input', () => {
+        clearTimeout(urlPreviewTimer);
+        urlPreviewTimer = setTimeout(updateUrlRangePreview, 250);
+      });
+    }
+
     if (elements.btnSaveSitemapMeta) {
       elements.btnSaveSitemapMeta.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1075,6 +1096,36 @@
     }
   }
 
+  function updateUrlRangePreview() {
+    const box = document.getElementById('url-range-preview');
+    const countEl = document.getElementById('url-range-count');
+    const samplesEl = document.getElementById('url-range-samples');
+    const warnEl = document.getElementById('url-range-warning');
+    if (!box || !countEl || !samplesEl || !elements.fieldSitemapUrls) return;
+
+    const raw = elements.fieldSitemapUrls.value || '';
+    const lines = raw.split('\n').map(u => u.trim()).filter(Boolean);
+    const hasRange = lines.some(u => /\[[^\[\]]+\]/.test(u));
+
+    if (!lines.length || !hasRange) {
+      box.style.display = 'none';
+      return;
+    }
+
+    let expanded = [];
+    try {
+      expanded = UrlRangeExpander.expandStartUrls(lines);
+    } catch (e) {
+      box.style.display = 'none';
+      return;
+    }
+
+    box.style.display = 'block';
+    countEl.textContent = t('urlPreviewCount', { n: expanded.length });
+    samplesEl.textContent = expanded.slice(0, 5).join('\n') + (expanded.length > 5 ? '\n…' : '');
+    if (warnEl) warnEl.style.display = expanded.length >= 100000 ? 'block' : 'none';
+  }
+
   function openCreateSitemapMeta() {
     state.currentSitemap = null;
     if (elements.sitemapMetaError) {
@@ -1085,6 +1136,7 @@
     elements.btnSaveSitemapMeta.textContent = t('createSitemap');
     elements.formSitemapMeta.reset();
     elements.fieldSitemapId.readOnly = false;
+    updateUrlRangePreview();
     switchView('sitemap-meta');
   }
 
@@ -1099,6 +1151,7 @@
     elements.fieldSitemapId.value = state.currentSitemap.name || state.currentSitemap._id;
     elements.fieldSitemapId.readOnly = false;
     elements.fieldSitemapUrls.value = state.currentSitemap.startUrl.join('\n');
+    updateUrlRangePreview();
     switchView('sitemap-meta');
   }
 
@@ -1201,6 +1254,41 @@
 
     try {
       const parsed = JSON.parse(jsonStr);
+
+      // Full backup file (produced by "Export All") or a plain array of sitemaps.
+      const backupList = Array.isArray(parsed)
+        ? parsed
+        : (parsed && parsed.format === 'web-scraper-backup' && Array.isArray(parsed.sitemaps))
+          ? parsed.sitemaps
+          : null;
+
+      if (backupList) {
+        let imported = 0;
+        const failures = [];
+        for (const item of backupList) {
+          try {
+            const sm = new Sitemap(item);
+            const v = sm.validate();
+            if (!v.isValid) {
+              failures.push(`${sm._id || '?'}: ${v.errors.join(' ')}`);
+              continue;
+            }
+            await AppStorage.saveSitemap(sm);
+            imported++;
+          } catch (err) {
+            failures.push(err.message || String(err));
+          }
+        }
+        await loadSitemaps();
+        if (failures.length) {
+          showImportError(t('importPartial', { ok: imported, fail: failures.length, msg: failures.join('; ') }));
+        } else {
+          alert(t('importedAll', { n: imported }));
+          switchView('sitemaps');
+        }
+        return;
+      }
+
       if (nameOverride) {
         parsed._id = nameOverride;
         parsed.name = nameOverride;
@@ -1290,6 +1378,26 @@
       if (state.scraperEngine) state.scraperEngine.stop();
     });
     document.getElementById('btn-scrape-view-data').addEventListener('click', () => openBrowseData());
+
+    const btnDownloadLog = document.getElementById('btn-download-log');
+    if (btnDownloadLog) {
+      btnDownloadLog.addEventListener('click', () => downloadScrapeLog());
+    }
+  }
+
+  // Full log history (the on-screen log box is capped, this is not).
+  let scrapeLogHistory = [];
+  let scrapeErrorCount = 0;
+  const LOG_BOX_MAX_LINES = 500;
+
+  function downloadScrapeLog() {
+    if (!scrapeLogHistory.length) return;
+    const name = state.currentSitemap ? (state.currentSitemap._id || 'scrape') : 'scrape';
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const blob = new Blob([scrapeLogHistory.join('\n') + '\n'], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, `${name}_log_${stamp}.txt`);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
   async function startScraping() {
@@ -1311,6 +1419,9 @@
     const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
 
     elements.scrapeLogBox.innerHTML = '';
+    scrapeLogHistory = [];
+    scrapeErrorCount = 0;
+    if (elements.metricErrors) elements.metricErrors.textContent = '0';
     logScrape(t('scrapeStarting', { name: state.currentSitemap.name || state.currentSitemap._id }), 'info');
 
     // Initialize Scraper Engine
@@ -1336,6 +1447,8 @@
     });
 
     state.scraperEngine.on('error', (err) => {
+      scrapeErrorCount++;
+      if (elements.metricErrors) elements.metricErrors.textContent = scrapeErrorCount;
       logScrape(t('scrapeError', { msg: err.error || err.message || err }), 'error');
     });
 
@@ -1547,11 +1660,19 @@
   }
 
   function logScrape(msg, level = 'info') {
+    const time = new Date().toLocaleTimeString();
+    const line = `[${time}] ${msg}`;
+    scrapeLogHistory.push(`${level.toUpperCase().padEnd(7)} ${line}`);
+
     const entry = document.createElement('div');
     entry.className = `log-entry log-${level}`;
-    const time = new Date().toLocaleTimeString();
-    entry.textContent = `[${time}] ${msg}`;
+    entry.textContent = line;
     elements.scrapeLogBox.appendChild(entry);
+    // Cap the on-screen log so very long crawls don't bloat the DOM;
+    // the full history stays available via "Download log".
+    while (elements.scrapeLogBox.children.length > LOG_BOX_MAX_LINES) {
+      elements.scrapeLogBox.removeChild(elements.scrapeLogBox.firstChild);
+    }
     elements.scrapeLogBox.scrollTop = elements.scrapeLogBox.scrollHeight;
   }
 
@@ -1610,6 +1731,10 @@
     if (btnZipAll) btnZipAll.addEventListener('click', () => downloadGalleryZip(false));
     const btnZipSel = document.getElementById('btn-gallery-zip-selected');
     if (btnZipSel) btnZipSel.addEventListener('click', () => downloadGalleryZip(true));
+    const btnSelAll = document.getElementById('btn-gallery-select-all');
+    if (btnSelAll) btnSelAll.addEventListener('click', () => setGallerySelection(true));
+    const btnSelNone = document.getElementById('btn-gallery-select-none');
+    if (btnSelNone) btnSelNone.addEventListener('click', () => setGallerySelection(false));
 
     // Auto-hiding slideshow chrome. The cursor is hidden together with the
     // controls (via the `idle` class) so nothing floats over the image.
@@ -1709,6 +1834,18 @@
       }
     });
 
+    // Page size selector — keep the first visible row in view when resizing.
+    const pageSizeSel = document.getElementById('data-page-size');
+    if (pageSizeSel) {
+      pageSizeSel.addEventListener('change', () => {
+        const newSize = parseInt(pageSizeSel.value, 10) || 25;
+        const firstVisibleIndex = (state.dataPagination.page - 1) * state.dataPagination.pageSize;
+        state.dataPagination.pageSize = newSize;
+        state.dataPagination.page = Math.floor(firstVisibleIndex / newSize) + 1;
+        renderDataTablePage();
+      });
+    }
+
     // Export View Buttons
     document.getElementById('btn-download-csv').addEventListener('click', () => {
       const delimiter = document.getElementById('export-csv-delimiter').value;
@@ -1728,6 +1865,40 @@
         Exporter.downloadJSON(state.scrapedData, state.currentSitemap.name);
       }
     });
+
+    const btnTsv = document.getElementById('btn-download-tsv');
+    if (btnTsv) {
+      btnTsv.addEventListener('click', () => {
+        if (state.currentSitemap && state.scrapedData.length > 0) {
+          Exporter.downloadTSV(state.scrapedData, state.currentSitemap.name);
+        }
+      });
+    }
+
+    const btnNdjson = document.getElementById('btn-download-ndjson');
+    if (btnNdjson) {
+      btnNdjson.addEventListener('click', () => {
+        if (state.currentSitemap && state.scrapedData.length > 0) {
+          Exporter.downloadNDJSON(state.scrapedData, state.currentSitemap.name);
+        }
+      });
+    }
+
+    const btnCopyCsv = document.getElementById('btn-copy-data-csv');
+    if (btnCopyCsv) {
+      btnCopyCsv.addEventListener('click', async () => {
+        // Copy the currently filtered view so search results can be copied too.
+        const rows = state.filteredData.length ? state.filteredData : state.scrapedData;
+        if (!rows.length) return;
+        const csv = Exporter.toCSV(rows, { bom: false });
+        try {
+          await navigator.clipboard.writeText(csv);
+          alert(t('copiedCsv', { n: rows.length }));
+        } catch (e) {
+          console.warn('Clipboard write failed:', e);
+        }
+      });
+    }
   }
 
   async function openBrowseData() {
@@ -1817,6 +1988,10 @@
       });
       trHead.appendChild(th);
     });
+    // Row actions column (delete)
+    const thActions = document.createElement('th');
+    thActions.style.width = '40px';
+    trHead.appendChild(thActions);
     elements.theadScrapedData.appendChild(trHead);
 
     // Paginate rows
@@ -1843,6 +2018,29 @@
         });
         tr.appendChild(td);
       });
+
+      // Delete-row button
+      const tdDel = document.createElement('td');
+      tdDel.style.textAlign = 'center';
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn btn-danger btn-sm row-delete-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = t('deleteRow');
+      delBtn.addEventListener('click', async () => {
+        if (!confirm(t('confirmDeleteRow'))) return;
+        const masterIdx = state.scrapedData.indexOf(row);
+        if (masterIdx >= 0) state.scrapedData.splice(masterIdx, 1);
+        if (state.currentSitemap) {
+          await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        }
+        // Keep the current page valid after removal.
+        const maxPage = Math.max(1, Math.ceil(Math.max(0, state.filteredData.length - 1) / state.dataPagination.pageSize));
+        if (state.dataPagination.page > maxPage) state.dataPagination.page = maxPage;
+        filterAndRenderDataTable();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
       elements.tbodyScrapedData.appendChild(tr);
     });
 
@@ -1911,6 +2109,23 @@
     switchView('gallery');
   }
 
+  function setGallerySelection(selected) {
+    document.querySelectorAll('#gallery-grid .gallery-select').forEach((chk) => {
+      chk.checked = selected;
+      const card = chk.closest('.gallery-card');
+      if (card) card.classList.toggle('selected', selected);
+    });
+    updateGallerySelectionBadge();
+  }
+
+  function updateGallerySelectionBadge() {
+    const badge = document.getElementById('gallery-selected-badge');
+    if (!badge) return;
+    const n = document.querySelectorAll('#gallery-grid .gallery-select:checked').length;
+    badge.style.display = n > 0 ? 'inline-block' : 'none';
+    badge.textContent = t('nSelected', { n: n });
+  }
+
   function renderGallery() {
     const grid = document.getElementById('gallery-grid');
     const badge = document.getElementById('gallery-count-badge');
@@ -1930,6 +2145,8 @@
       const card = document.createElement('div');
       card.className = 'gallery-card';
       const img = document.createElement('img');
+      img.setAttribute('loading', 'lazy'); // avoid loading hundreds of off-screen images at once
+      img.setAttribute('decoding', 'async');
       img.src = item.url;
       img.alt = '';
       img.addEventListener('click', () => openSlideshow(idx));
@@ -1952,7 +2169,10 @@
       const chk = document.createElement('input');
       chk.type = 'checkbox';
       chk.className = 'gallery-select';
-      chk.addEventListener('change', () => card.classList.toggle('selected', chk.checked));
+      chk.addEventListener('change', () => {
+        card.classList.toggle('selected', chk.checked);
+        updateGallerySelectionBadge();
+      });
       saveBtn.addEventListener('click', async () => {
         const next = input.value.trim();
         const rec = state.scrapedData[item.rowIdx];
@@ -1976,6 +2196,7 @@
       card.appendChild(meta);
       grid.appendChild(card);
     });
+    updateGallerySelectionBadge();
   }
 
   let slideIndex = 0;

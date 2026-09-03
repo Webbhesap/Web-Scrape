@@ -77,6 +77,21 @@
     }
 
     /**
+     * Converts records to TSV (tab separated values) string.
+     */
+    static toTSV(data, options = {}) {
+      return this.toCSV(data, Object.assign({ delimiter: '\t' }, options));
+    }
+
+    /**
+     * Converts records to NDJSON / JSON Lines: one JSON object per line.
+     */
+    static toNDJSON(data) {
+      if (!Array.isArray(data) || data.length === 0) return '';
+      return data.map(row => JSON.stringify(row)).join('\n') + '\n';
+    }
+
+    /**
      * Downloads scraped data as CSV file.
      */
     static downloadCSV(data, sitemapName, delimiter = ',') {
@@ -104,6 +119,49 @@
       const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
       const filename = `${sanitizeFilename(sitemapName)}_data.json`;
       downloadBlob(blob, filename);
+    }
+
+    /**
+     * Downloads scraped data as TSV file.
+     */
+    static downloadTSV(data, sitemapName) {
+      const tsvStr = this.toTSV(data, { bom: true });
+      const blob = new Blob([tsvStr], { type: 'text/tab-separated-values;charset=utf-8;' });
+      const filename = `${sanitizeFilename(sitemapName)}_data.tsv`;
+      downloadBlob(blob, filename);
+    }
+
+    /**
+     * Downloads scraped data as NDJSON (JSON Lines) file.
+     */
+    static downloadNDJSON(data, sitemapName) {
+      const ndStr = this.toNDJSON(data);
+      const blob = new Blob([ndStr], { type: 'application/x-ndjson;charset=utf-8;' });
+      const filename = `${sanitizeFilename(sitemapName)}_data.ndjson`;
+      downloadBlob(blob, filename);
+    }
+
+    /**
+     * Builds a backup object containing every sitemap definition.
+     */
+    static buildSitemapsBackup(sitemaps) {
+      return {
+        format: 'web-scraper-backup',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        sitemaps: Array.isArray(sitemaps) ? sitemaps : []
+      };
+    }
+
+    /**
+     * Downloads all sitemaps in a single backup JSON file.
+     */
+    static downloadAllSitemaps(sitemaps) {
+      const backup = this.buildSitemapsBackup(sitemaps);
+      const jsonStr = this.toJSON(backup, true);
+      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+      const date = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, `webscraper_backup_${date}.json`);
     }
 
     /**
