@@ -64,7 +64,7 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 |----|---------|----------|------|
 | **F13** | **Bölümlice Sayfa Scraping ile İzolasyon ✅** | Birden fazla sayfayı aynı anda scrapping yapma, per-tab izolasyon (storage, CSS, JS) ile büyük sitemap'leri hızlandırma, concurrency cap ve global throttle ile. TAMAMEN YEREL - tab isolation IndexedDB ile. | Yüksek |
 | **F14** | **Bellek Sızıntısı Düzeltmeleri & Temizlik ✅** | Uzun süren crawling (>100 sayfa) sırasında event listeners, timeouts ve Interval referanslarının sistematik incelemesi ve düzeltilmesi. | Orta |
-| **F15** | **Seçici Logger & Log Dışa Aktarıma** | Kullanıcılar aktivite log'ını JSON/CSV olarak dışa aktarabilir, severity (info/warn/error) ve zaman aralığı ile filtreleyebilir, console erişimi olmadan debug için. TAMAMEN YEREL - tarayıcı log'ı. | Düşük |
+| **F15** | **Seçici Logger & Log Dışa Aktarıma ✅** | Kullanıcılar aktivite log'ını JSON/CSV olarak dışa aktarabilir, severity (info/warn/error) ve zaman aralığı ile filtreleyebilir, console erişimi olmadan debug için. TAMAMEN YEREL - tarayıcı log'ı. | Düşük |
 
 ### Faiz 5: Test & Kalite Garantisi (Yerel)
 
