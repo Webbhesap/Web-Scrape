@@ -226,6 +226,17 @@
       this.delay = parseInt(data.delay, 10) || 0;
       this.regex = data.regex || '';
 
+      // Local post-processing pipeline (see lib/transforms.js). Transforms
+      // are stored in application order; defaultValue fills empty results.
+      if (typeof TextTransforms !== 'undefined' && TextTransforms && TextTransforms.normalizeTransforms) {
+        this.transforms = TextTransforms.normalizeTransforms(data.transforms);
+      } else {
+        this.transforms = Array.isArray(data.transforms) ? data.transforms : [];
+      }
+      this.defaultValue = data.defaultValue === undefined || data.defaultValue === null
+        ? ''
+        : String(data.defaultValue);
+
       const typeMeta = SELECTOR_TYPES[this.type] || SELECTOR_TYPES.SelectorText;
       this.acceptsChildren = !!typeMeta.acceptsChildren;
 
@@ -306,6 +317,10 @@
       };
 
       if (this.regex) obj.regex = this.regex;
+      if (Array.isArray(this.transforms) && this.transforms.length > 0) {
+        obj.transforms = this.transforms.map((s) => Object.assign({}, s));
+      }
+      if (this.defaultValue) obj.defaultValue = this.defaultValue;
 
       if (this.type === 'SelectorLink') {
         obj.linkType = this.linkType;

@@ -14,6 +14,7 @@
     currentParentSelector: '_root',
     parentHierarchyPath: ['_root'],
     editingSelectorId: null,
+    editingTransforms: [],
     scrapedData: [],
     filteredData: [],
     galleryItems: [],
@@ -133,6 +134,9 @@
     elements.fieldSelectorMultiple = document.getElementById('field-selector-multiple');
     elements.fieldSelectorRegex = document.getElementById('field-selector-regex');
     elements.fieldSelectorDelay = document.getElementById('field-selector-delay');
+    elements.fieldSelectorDefault = document.getElementById('field-selector-default');
+    elements.fieldTransformType = document.getElementById('field-transform-type');
+    elements.transformsList = document.getElementById('transforms-list');
     elements.parentSelectorsList = document.getElementById('parent-selectors-list');
 
     // Type options containers
@@ -760,6 +764,19 @@
       }
     });
 
+    // Text transforms editor
+    const btnAddTransform = document.getElementById('btn-add-transform');
+    if (btnAddTransform) {
+      btnAddTransform.addEventListener('click', () => {
+        const type = elements.fieldTransformType.value;
+        const step = type === 'regexReplace'
+          ? { type: 'regexReplace', find: '', replace: '', flags: 'g' }
+          : { type: type };
+        state.editingTransforms.push(step);
+        renderTransformsEditor();
+      });
+    }
+
     // Selector Picker Buttons
     document.getElementById('btn-picker-select').addEventListener('click', () => {
       launchElementPicker('select');
@@ -797,6 +814,78 @@
     }
   }
 
+  const TF_LABELS = {
+    trim: 'tfTrim', lowercase: 'tfLower', uppercase: 'tfUpper',
+    capitalize: 'tfCapitalize', number: 'tfNumber', regexReplace: 'tfRegexReplace'
+  };
+
+  function renderTransformsEditor() {
+    const listEl = elements.transformsList;
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    state.editingTransforms.forEach((step, idx) => {
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '4px';
+      row.style.alignItems = 'center';
+
+      const name = document.createElement('span');
+      name.className = 'badge badge-attr';
+      name.style.minWidth = '90px';
+      name.textContent = t(TF_LABELS[step.type] || step.type);
+      row.appendChild(name);
+
+      if (step.type === 'regexReplace') {
+        const find = document.createElement('input');
+        find.type = 'text';
+        find.className = 'form-control form-control-mono';
+        find.style.flex = '1';
+        find.placeholder = 'find (regex)';
+        find.value = step.find || '';
+        find.addEventListener('input', (e) => { step.find = e.target.value; });
+        const replace = document.createElement('input');
+        replace.type = 'text';
+        replace.className = 'form-control form-control-mono';
+        replace.style.flex = '1';
+        replace.placeholder = 'replace ($1 for groups)';
+        replace.value = step.replace == null ? '' : step.replace;
+        replace.addEventListener('input', (e) => { step.replace = e.target.value; });
+        row.appendChild(find);
+        row.appendChild(replace);
+      }
+
+      const mkBtn = (label, title, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-secondary btn-sm';
+        b.textContent = label;
+        b.title = title;
+        b.addEventListener('click', fn);
+        return b;
+      };
+      row.appendChild(mkBtn('↑', t('tfMoveUp'), () => {
+        if (idx > 0) {
+          const arr = state.editingTransforms;
+          [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+          renderTransformsEditor();
+        }
+      }));
+      row.appendChild(mkBtn('↓', t('tfMoveDown'), () => {
+        const arr = state.editingTransforms;
+        if (idx < arr.length - 1) {
+          [arr[idx + 1], arr[idx]] = [arr[idx], arr[idx + 1]];
+          renderTransformsEditor();
+        }
+      }));
+      row.appendChild(mkBtn('✕', t('delete'), () => {
+        state.editingTransforms.splice(idx, 1);
+        renderTransformsEditor();
+      }));
+
+      listEl.appendChild(row);
+    });
+  }
+
   function openAddSelector() {
     if (!state.currentSitemap) return;
     state.editingSelectorId = null;
@@ -810,6 +899,9 @@
     elements.fieldSelectorType.value = 'SelectorText';
     onSelectorTypeChanged('SelectorText');
     elements.fieldSelectorMultiple.checked = false;
+    state.editingTransforms = [];
+    renderTransformsEditor();
+    if (elements.fieldSelectorDefault) elements.fieldSelectorDefault.value = '';
 
     renderParentSelectorsCheckboxes([state.currentParentSelector]);
     switchView('selector-edit');
@@ -835,6 +927,11 @@
     elements.fieldSelectorMultiple.checked = sel.multiple === true;
     elements.fieldSelectorRegex.value = sel.regex || '';
     elements.fieldSelectorDelay.value = sel.delay || 0;
+    state.editingTransforms = Array.isArray(sel.transforms)
+      ? sel.transforms.map((x) => Object.assign({}, x))
+      : [];
+    renderTransformsEditor();
+    if (elements.fieldSelectorDefault) elements.fieldSelectorDefault.value = sel.defaultValue || '';
 
     // Type specific fields
     if (sel.type === 'SelectorLink') elements.fieldLinkType.value = sel.linkType || 'linkFromHref';
@@ -922,7 +1019,11 @@
       multiple: elements.fieldSelectorMultiple.checked,
       parentSelectors: parentSelectors,
       regex: elements.fieldSelectorRegex.value.trim(),
-      delay: parseInt(elements.fieldSelectorDelay.value, 10) || 0
+      delay: parseInt(elements.fieldSelectorDelay.value, 10) || 0,
+      transforms: (typeof TextTransforms !== 'undefined' && TextTransforms.normalizeTransforms)
+        ? TextTransforms.normalizeTransforms(state.editingTransforms)
+        : state.editingTransforms.slice(),
+      defaultValue: elements.fieldSelectorDefault ? elements.fieldSelectorDefault.value : ''
     };
 
     // Type options

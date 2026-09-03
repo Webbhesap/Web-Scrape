@@ -366,6 +366,28 @@
               <input type="number" id="field-selector-delay" class="form-control" value="0" min="0">
             </div>
 
+            <div class="form-group" id="group-transforms">
+              <label class="form-label" data-i18n="transformsTitle">Text transforms (applied in order)</label>
+              <div class="input-with-button" style="margin-bottom:6px;">
+                <select id="field-transform-type" class="form-control">
+                  <option value="trim" data-i18n="tfTrim">Trim whitespace</option>
+                  <option value="lowercase" data-i18n="tfLower">lowercase</option>
+                  <option value="uppercase" data-i18n="tfUpper">UPPERCASE</option>
+                  <option value="capitalize" data-i18n="tfCapitalize">Capitalize Each Word</option>
+                  <option value="number" data-i18n="tfNumber">Parse number (1.234,56 / $1,234.56)</option>
+                  <option value="regexReplace" data-i18n="tfRegexReplace">Regex find &amp; replace</option>
+                </select>
+                <button type="button" class="btn btn-secondary" id="btn-add-transform" data-i18n="tfAdd">Add</button>
+              </div>
+              <div id="transforms-list" style="display:flex; flex-direction:column; gap:4px;"></div>
+              <div class="form-help" data-i18n="tfHelp">Transforms run in the listed order on every extracted value.</div>
+            </div>
+
+            <div class="form-group" id="group-default-value">
+              <label class="form-label" for="field-selector-default" data-i18n="defaultValue">Default value (used when extraction is empty)</label>
+              <input type="text" id="field-selector-default" class="form-control" placeholder="e.g. N/A">
+            </div>
+
             <div class="form-group">
               <label class="form-label"><span data-i18n="parentSelectors">Parent Selectors</span> <span style="color:#f43f5e;">*</span></label>
               <div id="parent-selectors-list" style="max-height: 140px; overflow-y: auto; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px;">
@@ -833,6 +855,7 @@
   <script src="../src/export/Exporter.js"></script>
   <script src="../src/ui/SelectorGraph.js"></script>
   <script src="../lib/i18n.js"></script>
+  <script src="../lib/transforms.js"></script>
   <script src="../lib/zip.js"></script>
   <script src="../dashboard/dashboard.js"></script>
 </body>

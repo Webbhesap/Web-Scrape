@@ -4,14 +4,29 @@
  */
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define([], factory);
+    define(['../../lib/transforms.js'], factory);
   } else if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    const TextTransforms = require('../../lib/transforms.js');
+    module.exports = factory(TextTransforms);
   } else {
-    root.SelectorEngine = factory();
+    root.SelectorEngine = factory(root.TextTransforms);
   }
-}(typeof self !== 'undefined' ? self : this, function () {
+}(typeof self !== 'undefined' ? self : this, function (TextTransforms) {
   'use strict';
+
+  /** Applies the selector's transform pipeline + default value to a value. */
+  function postProcess(value, selector) {
+    if (!selector) return value;
+    const opts = {};
+    if (Array.isArray(selector.transforms) && selector.transforms.length > 0) {
+      opts.transforms = selector.transforms;
+    }
+    if (selector.defaultValue !== undefined && selector.defaultValue !== null && selector.defaultValue !== '') {
+      opts.defaultValue = selector.defaultValue;
+    }
+    if (!Object.keys(opts).length) return value;
+    return TextTransforms.postProcess(value, opts);
+  }
 
   function cleanText(text) {
     if (text === null || text === undefined) return '';
@@ -212,11 +227,11 @@
     extractText(context, selector) {
       if (selector.multiple) {
         const elements = this.queryAll(context, selector.selector);
-        return elements.map(el => applyRegex(getElementVisibleText(el), selector.regex));
+        return postProcess(elements.map(el => applyRegex(getElementVisibleText(el), selector.regex)), selector);
       } else {
         const el = this.queryFirst(context, selector.selector);
-        if (!el) return '';
-        return applyRegex(getElementVisibleText(el), selector.regex);
+        if (!el) return postProcess('', selector);
+        return postProcess(applyRegex(getElementVisibleText(el), selector.regex), selector);
       }
     }
 
@@ -234,12 +249,12 @@
           }
           return {
             href: href,
-            text: cleanText(el.textContent)
+            text: postProcess(cleanText(el.textContent), selector)
           };
         });
       } else {
         const el = this.queryFirst(context, selector.selector);
-        if (!el) return { href: '', text: '' };
+        if (!el) return postProcess({ href: '', text: '' }, selector);
         let href = '';
         if (selector.linkType === 'linkFromText') {
           href = resolveUrl(cleanText(el.textContent), this.baseUrl);
@@ -250,7 +265,7 @@
         }
         return {
           href: href,
-          text: cleanText(el.textContent)
+          text: postProcess(cleanText(el.textContent), selector)
         };
       }
     }
@@ -275,11 +290,11 @@
     extractImage(context, selector) {
       if (selector.multiple) {
         const elements = this.queryAll(context, selector.selector);
-        return elements.map(el => extractImageUrl(el, this.baseUrl));
+        return postProcess(elements.map(el => extractImageUrl(el, this.baseUrl)), selector);
       } else {
         const el = this.queryFirst(context, selector.selector);
-        if (!el) return '';
-        return extractImageUrl(el, this.baseUrl);
+        if (!el) return postProcess('', selector);
+        return postProcess(extractImageUrl(el, this.baseUrl), selector);
       }
     }
 
@@ -287,22 +302,22 @@
       const attrName = selector.extractAttribute || 'href';
       if (selector.multiple) {
         const elements = this.queryAll(context, selector.selector);
-        return elements.map(el => applyRegex(el.getAttribute(attrName) || '', selector.regex));
+        return postProcess(elements.map(el => applyRegex(el.getAttribute(attrName) || '', selector.regex)), selector);
       } else {
         const el = this.queryFirst(context, selector.selector);
-        if (!el) return '';
-        return applyRegex(el.getAttribute(attrName) || '', selector.regex);
+        if (!el) return postProcess('', selector);
+        return postProcess(applyRegex(el.getAttribute(attrName) || '', selector.regex), selector);
       }
     }
 
     extractHTML(context, selector) {
       if (selector.multiple) {
         const elements = this.queryAll(context, selector.selector);
-        return elements.map(el => applyRegex(selector.outerHTML ? el.outerHTML : el.innerHTML, selector.regex));
+        return postProcess(elements.map(el => applyRegex(selector.outerHTML ? el.outerHTML : el.innerHTML, selector.regex)), selector);
       } else {
         const el = this.queryFirst(context, selector.selector);
-        if (!el) return '';
-        return applyRegex(selector.outerHTML ? el.outerHTML : el.innerHTML, selector.regex);
+        if (!el) return postProcess('', selector);
+        return postProcess(applyRegex(selector.outerHTML ? el.outerHTML : el.innerHTML, selector.regex), selector);
       }
     }
 
@@ -315,7 +330,7 @@
         }
         return cleanText(el.textContent);
       }).filter(Boolean);
-      return values.join(delimiter);
+      return postProcess(values.join(delimiter), selector);
     }
 
     extractTable(context, selector) {
@@ -429,11 +444,11 @@
           for (let i = 0; i < result.snapshotLength; i++) {
             results.push(nodeValue(result.snapshotItem(i)));
           }
-          return results;
+          return postProcess(results, selector);
         }
 
         const result = doc.evaluate(xpath, context, null, XPR.FIRST_ORDERED_NODE_TYPE, null);
-        return nodeValue(result.singleNodeValue);
+        return postProcess(nodeValue(result.singleNodeValue), selector);
       } catch (e) {
         console.warn('XPath error:', e);
         return multiple ? [] : '';
