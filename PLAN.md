@@ -80,7 +80,7 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 |----|---------|----------|------|
 | **F19** | **[Kaldırıldı] Interaktif Quick-Start Eğitimi** | Kullanıcının ilk kez deneyimi için adım adım rehber (Shepherd.js gibi hafif kütüphane ile), kurulum, sitemap oluşturma, scraping yapma ve veri ihracatı covered. **BUÖZ KALDIRILDI** - kullanıcı istemediği için kaldırıldı. | - |
 | **F20** | **[Kaldırıldı] Video Demo Kütüphanesi** | Kısa (30-60 saniye) ekran kaydı demolar en çok kullanılan özellikler için: görsel picker, range expansion, gallery slideshow, CSV ihracatı. **BUÖZ KALDIRILDI** - kullanıcı istemediği için kaldırıldı. | - |
-| **F21** | **Geliştirici Katkı Rehberi** | Yeni bir selector type ekleme, test suite'ını çalışma, DevTools panel'ını build etme ve PR'lar submit etme hakkında dokümantasyon, inklinting/formatting standartları içeren. TAMAMEN YEREL. | Düşük |
+| **F21** | **Geliştirici Katkı Rehberi ✅** | Yeni bir selector type ekleme, test suite'ını çalışma, DevTools panel'ını build etme ve PR'lar submit etme hakkında dokümantasyon, inklinting/formatting standartları içeren. TAMAMEN YEREL. | Düşük |
 
 ---
 
