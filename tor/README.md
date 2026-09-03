@@ -40,6 +40,23 @@ open the add-on's **Permissions** tab in `about:addons` and enable
 *"Access your data for all websites"*, otherwise the picker and the scraper
 cannot reach pages.
 
+## Troubleshooting
+
+**Toolbar button / DevTools tab is missing entirely**
+Tor Browser runs in permanent private-browsing mode, and Firefox does not run
+newly installed extensions in private windows by default. Open
+`about:addons` → Web Scraper → set **Run in Private Windows** to **Allow**,
+then reopen your tabs. To pin the button, click the puzzle-piece (🧩) icon in
+the toolbar → gear next to Web Scraper → **Pin to Toolbar**. The DevTools tab
+only registers when DevTools is (re)opened after the extension is running.
+
+**"Missing host permission for the tab"**
+Firefox MV3 treats host permissions as opt-in. The extension now checks this
+at runtime and shows the browser's own permission prompt the first time you
+use the picker or start a scrape — accept it there, or enable *"Access your
+data for all websites"* under `about:addons` → Web Scraper → Permissions.
+Tabs opened *before* the grant may need a reload.
+
 ## Privacy warning
 
 The Tor Project recommends **against** installing extra extensions: every

@@ -126,12 +126,19 @@ test('DevTools panel - registers itself with a valid panel page', () => {
   const devtoolsJs = fs.readFileSync(path.join(ROOT, 'devtools', 'devtools.js'), 'utf8');
   assert.match(devtoolsJs, /chrome\.devtools\.panels\.create/, 'panel is registered');
 
-  const referenced = devtoolsJs.match(/'(devtools\/panel\.html)'/);
-  assert.ok(referenced, 'panel page path is passed to create()');
-  assert.ok(fs.existsSync(path.join(ROOT, referenced[1])), 'the referenced panel page exists');
+  // Regression: paths MUST be extension-root absolute (leading "/").
+  // Chrome resolves relative paths against the extension root but Firefox
+  // resolves them against the devtools/ directory, producing the broken
+  // "devtools/devtools/panel.html" URL in Firefox/Tor Browser.
+  const referenced = devtoolsJs.match(/'(\/devtools\/panel\.html)'/);
+  assert.ok(referenced, 'panel page path is passed to create() as an absolute path');
+  assert.ok(fs.existsSync(path.join(ROOT, referenced[1].slice(1))), 'the referenced panel page exists');
 
-  const iconRef = devtoolsJs.match(/'(icons\/[^']+)'/);
-  assert.ok(iconRef && fs.existsSync(path.join(ROOT, iconRef[1])), 'the panel icon exists');
+  const iconRef = devtoolsJs.match(/'(\/icons\/[^']+)'/);
+  assert.ok(iconRef, 'panel icon path is absolute');
+  assert.ok(fs.existsSync(path.join(ROOT, iconRef[1].slice(1))), 'the panel icon exists');
+
+  assert.ok(!/'(?:devtools|icons)\//.test(devtoolsJs), 'no root-relative panel paths remain (Firefox-incompatible)');
 });
 
 test('DevTools panel - manifest wires up the devtools page', () => {

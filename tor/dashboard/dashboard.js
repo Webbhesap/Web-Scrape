@@ -1014,6 +1014,41 @@
     callback(null);
   }
 
+  /**
+   * Ensures the extension actually holds the <all_urls> host permission.
+   *
+   * Chrome grants manifest host_permissions at install time, so this is a
+   * no-op there. Firefox (and therefore Tor Browser) treats MV3 host
+   * permissions as opt-in: even when the user toggles them in about:addons,
+   * script injection can still fail with "Missing host permission for the
+   * tab" (e.g. tabs opened before the grant, or quarantined-domain rules).
+   * Requesting the permission from inside a user gesture (button click)
+   * makes Firefox bind it reliably.
+   */
+  function ensureHostPermission(callback) {
+    if (typeof chrome === 'undefined' || !chrome.permissions || !chrome.permissions.contains) {
+      callback(true);
+      return;
+    }
+    const wanted = { origins: ['<all_urls>'] };
+    try {
+      chrome.permissions.contains(wanted, (has) => {
+        if (chrome.runtime.lastError) { callback(true); return; }
+        if (has) { callback(true); return; }
+        chrome.permissions.request(wanted, (granted) => {
+          if (chrome.runtime.lastError) {
+            console.warn('Permission request failed:', chrome.runtime.lastError.message);
+            callback(false);
+            return;
+          }
+          callback(!!granted);
+        });
+      });
+    } catch (e) {
+      callback(true);
+    }
+  }
+
   function launchElementPicker(mode) {
     const selStr = elements.fieldSelectorCss.value.trim();
     const selType = elements.fieldSelectorType.value;
@@ -1021,6 +1056,11 @@
 
     // Check if running in Chrome extension environment
     if (typeof chrome !== 'undefined' && chrome.tabs && chrome.scripting) {
+      ensureHostPermission((ok) => {
+        if (!ok) {
+          alert(t('hostPermNeeded'));
+          return;
+        }
       getTargetTabId((tabId) => {
         if (!tabId) {
           alert(t('noActiveTab'));
@@ -1082,6 +1122,7 @@
           });
         });
       });
+      }); // ensureHostPermission
       return;
     }
 
@@ -1407,6 +1448,14 @@
     // and corrupt the metrics/results of the running crawl.
     if (state.scraperEngine && state.scraperEngine.isRunning) {
       logScrape(t('scrapeAlreadyRunning'), 'error');
+      return;
+    }
+
+    // Firefox/Tor: make sure the <all_urls> host permission is actually
+    // granted before opening scraping tabs (see ensureHostPermission).
+    const permitted = await new Promise((resolve) => ensureHostPermission(resolve));
+    if (!permitted) {
+      logScrape(t('hostPermNeeded'), 'error');
       return;
     }
 
