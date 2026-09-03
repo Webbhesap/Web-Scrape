@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Selector } = require('../src/models/Selector.js');
-const Sitemap = require('../src/models/Sitemap.js');
+const { Selector } = require('../chrome-edge/src/models/Selector.js');
+const Sitemap = require('../chrome-edge/src/models/Sitemap.js');
 
 test('Selector Model - Validation & Serialization', () => {
   const sel = new Selector({

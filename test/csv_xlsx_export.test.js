@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const CSV = require('../lib/csv.js');
-const XLSX = require('../lib/xlsx.js');
-const Exporter = require('../src/export/Exporter.js');
+const CSV = require('../chrome-edge/lib/csv.js');
+const XLSX = require('../chrome-edge/lib/xlsx.js');
+const Exporter = require('../chrome-edge/src/export/Exporter.js');
 
 test('CSV Parser & Generator - RFC 4180 with quotes, commas and newlines', () => {
   const data = [

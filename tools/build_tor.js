@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Generates the Tor Browser (Firefox ESR) NATIVE build in tor/ from the
- * Chrome/Edge source tree.
+ * Chrome/Edge source tree in chrome-edge/.
  *
  * The tor/ build targets ONLY Firefox/Tor: it uses the promise-based
  * `browser.*` WebExtension namespace with async/await instead of the
@@ -21,12 +21,12 @@
  *   7. src/export/Exporter.js – browser.downloads promise API
  *   8. content/*.js           – browser.runtime messaging (promise replies)
  *   9. lib/i18n.js            – "chrome://" wording becomes "about:"
- *  10. everything else        – copied verbatim (engines, models, lib,
+ *   10. everything else        – copied verbatim (engines, models, lib,
  *                               locales, icons, css, html)
  *
  * Every rewrite anchors on an exact source excerpt and THROWS when the
- * anchor is missing, so `npm run check:tor` fails loudly if the root
- * sources drift instead of silently shipping stale Firefox code.
+ * anchor is missing, so `npm run check:tor` fails loudly if the
+ * chrome-edge/ sources drift instead of silently shipping stale Firefox code.
  *
  * Usage:  node tools/build_tor.js          (writes the tor/ tree)
  *         node tools/build_tor.js --check  (verifies it is up to date)
@@ -37,6 +37,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
+// Chrome/Edge source tree (tests and tooling stay at the repository root).
+const SRC = path.join(ROOT, 'chrome-edge');
 const TARGET = path.join(ROOT, 'tor');
 const NATIVE = path.join(__dirname, 'tor_native');
 
@@ -590,9 +592,9 @@ function buildReadme() {
   return `# Web Scraper — Tor Browser Build (Firefox native)
 
 This folder contains the **Tor Browser (Firefox ESR) native** build of the
-extension. It is **auto-generated** from the Chrome/Edge source tree at the
-repository root by \`tools/build_tor.js\` — do not edit files here directly.
-Make changes in the root tree (or in \`tools/tor_native/\` for the
+extension. It is **auto-generated** from the Chrome/Edge source tree in
+\`chrome-edge/\` by \`tools/build_tor.js\` — do not edit files here directly.
+Make changes in the \`chrome-edge/\` tree (or in \`tools/tor_native/\` for the
 Firefox-specific files), then run:
 
 \`\`\`bash
@@ -727,16 +729,16 @@ function assertNoChromeApi(files) {
 function buildTree() {
   const files = new Map();
 
-  files.set('manifest.json', Buffer.from(buildManifest(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'))));
+  files.set('manifest.json', Buffer.from(buildManifest(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'))));
   files.set('README.md', Buffer.from(buildReadme()));
 
   for (const rel of COPY_FILES) {
-    files.set(rel, fs.readFileSync(path.join(ROOT, rel)));
+    files.set(rel, fs.readFileSync(path.join(SRC, rel)));
   }
   for (const dir of COPY_DIRS) {
-    for (const rel of listFiles(path.join(ROOT, dir))) {
+    for (const rel of listFiles(path.join(SRC, dir))) {
       const key = path.join(dir, rel);
-      files.set(key, fs.readFileSync(path.join(ROOT, key)));
+      files.set(key, fs.readFileSync(path.join(SRC, key)));
     }
   }
 
@@ -744,7 +746,7 @@ function buildTree() {
     files.set(rel, Buffer.from(readNative(nativeName)));
   }
   for (const [rel, transform] of Object.entries(TRANSFORMS)) {
-    const source = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    const source = fs.readFileSync(path.join(SRC, rel), 'utf8');
     files.set(rel, Buffer.from(transform(source)));
   }
 

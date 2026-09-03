@@ -9,9 +9,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-const Exporter = require('../src/export/Exporter.js');
+const Exporter = require('../chrome-edge/src/export/Exporter.js');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', 'chrome-edge');
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard', 'dashboard.html'), 'utf8');
 
 const SCRIPTS = [

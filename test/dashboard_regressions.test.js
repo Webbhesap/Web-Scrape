@@ -8,8 +8,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-const ROOT = path.resolve(__dirname, '..');
-const AppI18n = require('../lib/i18n.js');
+const ROOT = path.resolve(__dirname, '..', 'chrome-edge');
+const AppI18n = require('../chrome-edge/lib/i18n.js');
 
 // AppI18n.apply() touches the DOM on every setLang(); give it one.
 // A concrete origin is required for localStorage to be available.

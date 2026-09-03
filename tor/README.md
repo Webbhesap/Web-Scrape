@@ -1,9 +1,9 @@
 # Web Scraper — Tor Browser Build (Firefox native)
 
 This folder contains the **Tor Browser (Firefox ESR) native** build of the
-extension. It is **auto-generated** from the Chrome/Edge source tree at the
-repository root by `tools/build_tor.js` — do not edit files here directly.
-Make changes in the root tree (or in `tools/tor_native/` for the
+extension. It is **auto-generated** from the Chrome/Edge source tree in
+`chrome-edge/` by `tools/build_tor.js` — do not edit files here directly.
+Make changes in the `chrome-edge/` tree (or in `tools/tor_native/` for the
 Firefox-specific files), then run:
 
 ```bash

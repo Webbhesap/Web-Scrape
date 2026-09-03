@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const CssSelectorGenerator = require('../src/engine/CssSelectorGenerator.js');
+const CssSelectorGenerator = require('../chrome-edge/src/engine/CssSelectorGenerator.js');
 
 test('CssSelectorGenerator - Unique ID selector', () => {
   const dom = new JSDOM('<!DOCTYPE html><html><body><div id="main-header">Title</div></body></html>');

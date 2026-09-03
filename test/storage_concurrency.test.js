@@ -36,8 +36,8 @@ test('AppStorage - Chrome Storage Local Integration & No Deadlock', async () => 
   };
 
   // Re-require fresh module
-  delete require.cache[require.resolve('../src/storage/Storage.js')];
-  const AppStorage = require('../src/storage/Storage.js');
+  delete require.cache[require.resolve('../chrome-edge/src/storage/Storage.js')];
+  const AppStorage = require('../chrome-edge/src/storage/Storage.js');
 
   const initialList = await AppStorage.getAllSitemaps();
   assert.ok(Array.isArray(initialList));

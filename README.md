@@ -78,14 +78,15 @@ The interface uses a single dark palette driven by CSS custom properties, and op
 1. Open your browser and navigate to `chrome://extensions/` (or `edge://extensions/`).
 2. Enable **Developer mode** toggle (top right).
 3. Click **Load unpacked** (top left).
-4. Select this repository folder (`Web-Scrape`).
+4. Select the **`chrome-edge/`** folder inside this repository (`Web-Scrape/chrome-edge`).
 5. The extension is now installed! You can:
    - Click the **Web Scraper** extension icon in your browser toolbar.
    - Or press <kbd>F12</kbd> (Inspect) on any webpage and select the **Web Scraper** tab in DevTools!
 
 ### In Tor Browser (Firefox ESR):
 A dedicated **Firefox-native** build lives in the [`tor/`](tor/) folder (auto-generated
-from this source tree by `npm run build:tor` — never edit it by hand). It targets only
+from the [`chrome-edge/`](chrome-edge/) source tree by `npm run build:tor` — never edit it
+by hand). It targets only
 Firefox/Tor: promise-based `browser.*` APIs with async/await, an event-page background,
 and no `chrome.*` calls at all.
 
@@ -106,7 +107,7 @@ You can also run the Web Scraper dashboard in any browser without installing as 
 ```bash
 python3 -m http.server 8080 --bind 0.0.0.0
 ```
-Open `http://localhost:8080/dashboard/dashboard.html` in your browser.
+Open `http://localhost:8080/chrome-edge/dashboard/dashboard.html` in your browser.
 
 ---
 
@@ -114,68 +115,58 @@ Open `http://localhost:8080/dashboard/dashboard.html` in your browser.
 
 ```
 Web-Scrape/
-├── manifest.json                  # Manifest V3 configuration
-├── background.js                  # Background Service Worker & message broker
-├── index.html                     # Root entry redirect to dashboard
-├── lib/
-│   ├── csv.js                     # RFC 4180 CSV parser & generator (zero-dependency)
-│   ├── xlsx.js                    # Excel XML generator (zero-dependency)
-│   └── icons.js                   # SVG UI icons
-├── icons/
-│   ├── icon.svg                   # Vector logo
-│   ├── icon16.png                 # 16x16 icon
-│   ├── icon32.png                 # 32x32 icon
-│   ├── icon48.png                 # 48x48 icon
-│   └── icon128.png                # 128x128 icon
-├── content/
-│   ├── selector_picker.js         # Visual point-and-click element selector
-│   ├── selector_picker.css        # Highlighter overlay styles
-│   └── scraper_content.js         # In-page scraping execution script
-├── devtools/
-│   ├── devtools.html              # DevTools panel hook
-│   ├── devtools.js                # Registers Web Scraper panel in Chrome DevTools
-│   ├── panel.html                 # DevTools panel view
-│   └── panel.css                  # DevTools panel styles
-├── dashboard/
-│   ├── dashboard.html             # Standalone & full dashboard view
-│   ├── dashboard.js               # Application controller & event binder
-│   └── dashboard.css              # Modern dark-mode UI stylesheet
-├── popup/
-│   ├── popup.html                 # Extension toolbar popup
-│   ├── popup.js                   # Popup controller
-│   └── popup.css                  # Popup styles
-├── src/
-│   ├── models/
-│   │   ├── Selector.js            # Selector schema and all 12 type definitions
-│   │   └── Sitemap.js             # Sitemap model, hierarchy queries, and validation
-│   ├── engine/
-│   │   ├── UrlRangeExpander.js    # Numeric, alpha, and cartesian range expander
-│   │   ├── CssSelectorGenerator.js # Smart CSS selector generator & multi-select generalizer
-│   │   ├── SelectorEngine.js      # DOM data extraction engine
-│   │   ├── DataFlattener.js       # Converts hierarchical tree to tabular rectangular rows
-│   │   └── ScraperEngine.js       # Queue, crawler scheduler, and concurrency runner
-│   ├── storage/
-│   │   └── Storage.js             # IndexedDB with chrome.storage fallback
-│   └── export/
-│       └── Exporter.js            # CSV, Excel, and JSON exporter
+├── chrome-edge/                   # Chrome / Edge / Brave / Chromium extension (load this folder)
+│   ├── manifest.json              # Manifest V3 configuration
+│   ├── background.js              # Background Service Worker & message broker
+│   ├── index.html                 # Root entry redirect to dashboard
+│   ├── lib/
+│   │   ├── csv.js                 # RFC 4180 CSV parser & generator (zero-dependency)
+│   │   ├── xlsx.js                # Excel XML generator (zero-dependency)
+│   │   ├── zip.js                 # Zero-dependency ZIP (store method) writer
+│   │   ├── i18n.js                # EN / TR UI translations
+│   │   └── icons.js               # SVG UI icons
+│   ├── icons/                     # Vector logo + 16/32/48/128 px PNGs
+│   ├── content/
+│   │   ├── selector_picker.js     # Visual point-and-click element selector
+│   │   ├── selector_picker.css    # Highlighter overlay styles
+│   │   └── scraper_content.js     # In-page scraping execution script
+│   ├── devtools/
+│   │   ├── devtools.html          # DevTools panel hook
+│   │   ├── devtools.js            # Registers Web Scraper panel in DevTools
+│   │   ├── panel.html             # DevTools panel view (auto-generated)
+│   │   └── panel.css              # DevTools panel styles
+│   ├── dashboard/
+│   │   ├── dashboard.html         # Standalone & full dashboard view
+│   │   ├── dashboard.js           # Application controller & event binder
+│   │   └── dashboard.css          # Modern dark-mode UI stylesheet
+│   ├── popup/
+│   │   ├── popup.html             # Extension toolbar popup
+│   │   ├── popup.js               # Popup controller
+│   │   └── popup.css              # Popup styles
+│   ├── _locales/                  # Store-listing strings (en / tr)
+│   └── src/
+│       ├── models/
+│       │   ├── Selector.js        # Selector schema and all 12+ type definitions
+│       │   └── Sitemap.js         # Sitemap model, hierarchy queries, and validation
+│       ├── engine/
+│       │   ├── UrlRangeExpander.js        # Numeric, alpha, and cartesian range expander
+│       │   ├── CssSelectorGenerator.js    # Smart CSS selector generator & multi-select generalizer
+│       │   ├── SelectorEngine.js          # DOM data extraction engine
+│       │   ├── DataFlattener.js           # Converts hierarchical tree to tabular rows
+│       │   └── ScraperEngine.js           # Queue, crawler scheduler, and concurrency runner
+│       ├── storage/
+│       │   └── Storage.js         # chrome/browser.storage + IndexedDB + localStorage
+│       ├── export/
+│       │   └── Exporter.js        # CSV, Excel, JSON and ZIP exporter
+│       └── ui/
+│           └── SelectorGraph.js   # Interactive SVG selector hierarchy graph
+├── tor/                           # Tor Browser / Firefox ESR native build (auto-generated)
 ├── tools/
 │   ├── build_panel.js             # Generates devtools/panel.html from the dashboard
+│   ├── build_tor.js               # Generates the tor/ Firefox-native build
+│   ├── tor_native/                # Hand-written Firefox-native replacement sources
 │   └── theme_preview.html         # Manual visual check for themed native controls
-└── test/
-    ├── url_expander.test.js       # Range expander unit tests
-    ├── css_generator.test.js      # Smart CSS generator tests
-    ├── selector_engine.test.js    # Selector DOM extraction tests
-    ├── selectors_extended.test.js # Extended selector tests
-    ├── data_flattener.test.js     # Data flattening & record normalization tests
-    ├── sitemap_models.test.js     # Sitemap & Selector models tests
-    ├── csv_xlsx_export.test.js    # CSV & Excel export tests
-    ├── storage_concurrency.test.js# Storage integration & concurrency tests
-    ├── ui_integration.test.js     # Full UI DOM & scripts integration test
-    ├── slideshow_ui.test.js       # Slideshow controls, wheel nav & download tests
-    ├── theme_consistency.test.js  # Dark-theme / native control styling tests
-    ├── devtools_panel.test.js     # DevTools panel parity & auto-open regression tests
-    ├── dashboard_regressions.test.js # Controller & i18n regression tests
-    └── scraper_e2e.test.js        # Multi-page crawl & extraction E2E test
+└── test/                          # Node.js test-runner suite (npm test)
 ```
 
 ---
@@ -187,7 +178,7 @@ Install the dev dependency (jsdom) once, then run the suite with the Node.js tes
 npm install
 npm test
 ```
-All **73** automated unit, integration, UI and E2E tests will run and report results.
+All automated unit, integration, UI and E2E tests will run and report results (`npm run check:tor` / `npm run check:panel` verify the generated builds are up to date).
 
 The DevTools panel is generated from the dashboard so the two can never drift apart:
 ```bash
@@ -195,7 +186,7 @@ npm run build:panel   # regenerate devtools/panel.html
 npm run check:panel   # CI check: fails if it is out of date
 ```
 
-> `devtools/panel.html` is auto-generated — edit `dashboard/dashboard.html` and re-run `npm run build:panel`.
+> `devtools/panel.html` is auto-generated — edit `chrome-edge/dashboard/dashboard.html` and re-run `npm run build:panel`. Similarly, `tor/` is auto-generated from `chrome-edge/` by `npm run build:tor`.
 
 ---
 

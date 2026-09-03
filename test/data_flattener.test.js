@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const DataFlattener = require('../src/engine/DataFlattener.js');
+const DataFlattener = require('../chrome-edge/src/engine/DataFlattener.js');
 
 test('DataFlattener - Flat tree leaf node conversion', () => {
   DataFlattener.resetOrderCounter();

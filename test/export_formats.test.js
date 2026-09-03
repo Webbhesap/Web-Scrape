@@ -9,9 +9,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const Exporter = require('../src/export/Exporter.js');
+const Exporter = require('../chrome-edge/src/export/Exporter.js');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', 'chrome-edge');
 
 const SAMPLE = [
   { name: 'Widget "A"', price: '$10', note: 'has\ttab' },

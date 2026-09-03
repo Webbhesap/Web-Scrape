@@ -10,11 +10,12 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+const SRC = path.join(ROOT, 'chrome-edge');
 const TOR = path.join(ROOT, 'tor');
 const { buildManifest, buildTree, GECKO_ID } = require('../tools/build_tor.js');
 
 test('Tor build - manifest uses background.scripts instead of service_worker', () => {
-  const manifest = JSON.parse(buildManifest(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8')));
+  const manifest = JSON.parse(buildManifest(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8')));
 
   assert.ok(!manifest.background.service_worker, 'no service_worker (unsupported in Firefox MV3)');
   assert.deepEqual(manifest.background.scripts, ['src/storage/Storage.js', 'background.js'],
@@ -22,7 +23,7 @@ test('Tor build - manifest uses background.scripts instead of service_worker', (
 });
 
 test('Tor build - manifest uses options_ui and gecko settings', () => {
-  const manifest = JSON.parse(buildManifest(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8')));
+  const manifest = JSON.parse(buildManifest(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8')));
 
   assert.ok(!manifest.options_page, 'options_page is Chrome-only');
   assert.equal(manifest.options_ui.page, 'dashboard/dashboard.html');
@@ -32,7 +33,7 @@ test('Tor build - manifest uses options_ui and gecko settings', () => {
   assert.ok(manifest.browser_specific_settings.gecko.strict_min_version, 'min version set for Tor Browser ESR');
 
   // Everything else must be preserved from the Chrome manifest.
-  const chrome = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+  const chrome = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.permissions, chrome.permissions);
   assert.deepEqual(manifest.host_permissions, chrome.host_permissions);
   assert.deepEqual(manifest.content_scripts, chrome.content_scripts);
@@ -130,7 +131,7 @@ test('Tor build - engines, locales and markup stay identical to the root tree', 
   ]) {
     const key = rel.split('/').join(path.sep);
     assert.ok(tree.has(key), `${rel} present in tor build`);
-    assert.ok(tree.get(key).equals(fs.readFileSync(path.join(ROOT, rel))), `${rel} is byte-identical`);
+    assert.ok(tree.get(key).equals(fs.readFileSync(path.join(SRC, rel))), `${rel} is byte-identical`);
   }
   assert.ok(tree.has('README.md'), 'tor build ships its own README with install steps');
 });

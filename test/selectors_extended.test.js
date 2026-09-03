@@ -1,10 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const SelectorEngine = require('../src/engine/SelectorEngine.js');
-const { Selector } = require('../src/models/Selector.js');
-const Sitemap = require('../src/models/Sitemap.js');
-const Exporter = require('../src/export/Exporter.js');
+const SelectorEngine = require('../chrome-edge/src/engine/SelectorEngine.js');
+const { Selector } = require('../chrome-edge/src/models/Selector.js');
+const Sitemap = require('../chrome-edge/src/models/Sitemap.js');
+const Exporter = require('../chrome-edge/src/export/Exporter.js');
 
 test('SelectorEngine - Popup Link Selector (onclick & data-url)', () => {
   const html = `

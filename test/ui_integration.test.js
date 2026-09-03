@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
-const AppIcons = require('../lib/icons.js');
+const AppIcons = require('../chrome-edge/lib/icons.js');
 
 test('AppIcons - All SVG icons are valid XML and well-formed path commands', () => {
   for (const [name, svgStr] of Object.entries(AppIcons.icons)) {
@@ -20,7 +20,7 @@ test('AppIcons - All SVG icons are valid XML and well-formed path commands', () 
 });
 
 test('UI Integration - Dashboard HTML loads, parses scripts and initializes cleanly', async () => {
-  const htmlPath = path.join(__dirname, '../dashboard/dashboard.html');
+  const htmlPath = path.join(__dirname, '../chrome-edge/dashboard/dashboard.html');
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
   // Load in JSDOM without fetching remote CSS/scripts (scripts are injected from disk below)
@@ -65,7 +65,7 @@ test('UI Integration - Dashboard HTML loads, parses scripts and initializes clea
   ];
 
   for (const sFile of scriptFiles) {
-    const sPath = path.resolve(__dirname, '../dashboard', sFile);
+    const sPath = path.resolve(__dirname, '../chrome-edge/dashboard', sFile);
     const scriptCode = fs.readFileSync(sPath, 'utf8');
     const scriptEl = window.document.createElement('script');
     scriptEl.textContent = scriptCode;

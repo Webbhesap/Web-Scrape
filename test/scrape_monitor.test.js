@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', 'chrome-edge');
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard', 'dashboard.html'), 'utf8');
 const dashboardJs = fs.readFileSync(path.join(ROOT, 'dashboard', 'dashboard.js'), 'utf8');
 

@@ -1,9 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const Sitemap = require('../src/models/Sitemap.js');
-const ScraperEngine = require('../src/engine/ScraperEngine.js');
-const Exporter = require('../src/export/Exporter.js');
+const Sitemap = require('../chrome-edge/src/models/Sitemap.js');
+const ScraperEngine = require('../chrome-edge/src/engine/ScraperEngine.js');
+const Exporter = require('../chrome-edge/src/export/Exporter.js');
 
 // Mock HTML Pages
 const MOCK_PAGES = {

@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', 'chrome-edge');
 const dashboardCss = fs.readFileSync(path.join(ROOT, 'dashboard', 'dashboard.css'), 'utf8');
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard', 'dashboard.html'), 'utf8');
 const panelHtml = fs.readFileSync(path.join(ROOT, 'devtools', 'panel.html'), 'utf8');

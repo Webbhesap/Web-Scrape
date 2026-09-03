@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const SelectorEngine = require('../src/engine/SelectorEngine.js');
-const { Selector } = require('../src/models/Selector.js');
+const SelectorEngine = require('../chrome-edge/src/engine/SelectorEngine.js');
+const { Selector } = require('../chrome-edge/src/models/Selector.js');
 
 const SAMPLE_HTML = `
 <!DOCTYPE html>

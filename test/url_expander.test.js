@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const UrlRangeExpander = require('../src/engine/UrlRangeExpander.js');
+const UrlRangeExpander = require('../chrome-edge/src/engine/UrlRangeExpander.js');
 
 test('UrlRangeExpander - Static Single URL', () => {
   const result = UrlRangeExpander.expandUrl('https://example.com/products');

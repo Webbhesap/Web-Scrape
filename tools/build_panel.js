@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Generates devtools/panel.html from dashboard/dashboard.html.
+ * Generates chrome-edge/devtools/panel.html from
+ * chrome-edge/dashboard/dashboard.html.
  *
  * The DevTools panel renders the exact same application as the standalone
  * dashboard; it previously was a hand-maintained copy that drifted out of
  * sync (stale slideshow markup, missing i18n attributes, missing scripts).
- * Both `dashboard/` and `devtools/` live one level below the repository
- * root, so every `../lib/...` / `../src/...` reference resolves identically
- * and only the same-directory asset paths need rewriting.
+ * Both `dashboard/` and `devtools/` live one level below the `chrome-edge/`
+ * extension root, so every `../lib/...` / `../src/...` reference resolves
+ * identically and only the same-directory asset paths need rewriting.
  *
  * Usage:  node tools/build_panel.js          (writes the file)
  *         node tools/build_panel.js --check  (verifies it is up to date)
@@ -18,8 +19,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const SOURCE = path.join(ROOT, 'dashboard', 'dashboard.html');
-const TARGET = path.join(ROOT, 'devtools', 'panel.html');
+const SOURCE = path.join(ROOT, 'chrome-edge', 'dashboard', 'dashboard.html');
+const TARGET = path.join(ROOT, 'chrome-edge', 'devtools', 'panel.html');
 
 const BANNER = '<!-- AUTO-GENERATED from dashboard/dashboard.html by tools/build_panel.js. Do not edit directly. -->';
 

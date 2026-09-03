@@ -11,12 +11,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 
-const Sitemap = require('../src/models/Sitemap.js');
-const { Selector } = require('../src/models/Selector.js');
-const SelectorEngine = require('../src/engine/SelectorEngine.js');
-const ScraperEngine = require('../src/engine/ScraperEngine.js');
-const CSV = require('../lib/csv.js');
-const UrlRangeExpander = require('../src/engine/UrlRangeExpander.js');
+const Sitemap = require('../chrome-edge/src/models/Sitemap.js');
+const { Selector } = require('../chrome-edge/src/models/Selector.js');
+const SelectorEngine = require('../chrome-edge/src/engine/SelectorEngine.js');
+const ScraperEngine = require('../chrome-edge/src/engine/ScraperEngine.js');
+const CSV = require('../chrome-edge/lib/csv.js');
+const UrlRangeExpander = require('../chrome-edge/src/engine/UrlRangeExpander.js');
 
 test('SelectorEngine - SelectorXPath extracts text, attributes, multiples and regex', () => {
   const dom = new JSDOM(`
