@@ -70,7 +70,7 @@ Uzantı zaten **50+ yerel özellik** içinde geliyor - hiçbir bulut veya AI hiz
 
 | ID | Özellik | Açıklama | Çaba |
 |----|---------|----------|------|
-| **F16** | **Cross-Browser Uyumluluk Testleri** | Test süitesini Firefox ve Edge davranışları (Manifest V3 farkları, storage API, icon handling) kapsamına genişletme. TAMAMEN YEREL - jsdom ile simülasyon. | Orta |
+| **F16** | **Cross-Browser Uyumluluk Testleri ✅** | Test süitesini Firefox ve Edge davranışları (Manifest V3 farkları, storage API, icon handling) kapsamına genişletme. TAMAMEN YEREL - jsdom ile simülasyon. | Orta |
 | **F17** | **Otomasyon Testleri (Sadece Yerel Araçlar)** | Test otomasyonu için yerel araçlar kullanılarak genişletme. Puppeteer/Playwright **YOK** - sadece test framework'ları (jest/jsdom) kullanılır. | Orta |
 | **F18** | **Property-Based Testing for Selector Generation** | Seçici oluşumu için property-based testing. `hypothesis` **YOK** - sadece deterministic test case'lar kullanır, hiçbir dış servis yok. | Yüksek |
 
