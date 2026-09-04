@@ -543,6 +543,29 @@
               <input type="number" id="scrape-max-pages" class="form-control" value="0" min="0">
               <div class="form-help" data-i18n="helpMaxPages">Maximum number of pages to scrape.</div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label" for="scrape-request-retries" data-i18n="requestRetries">Retries per page (0 for none)</label>
+              <input type="number" id="scrape-request-retries" class="form-control" value="1" min="0" max="5">
+              <div class="form-help" data-i18n="helpRetries">Failed pages are retried with exponential backoff before being logged as errors.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="scrape-max-depth" data-i18n="maxDepthLabel">Max link depth (0 for unlimited)</label>
+              <input type="number" id="scrape-max-depth" class="form-control" value="0" min="0">
+              <div class="form-help" data-i18n="helpMaxDepth">Start pages are depth 0; followed links add one level each.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="scrape-include-patterns" data-i18n="includePatterns">Follow only URLs matching (optional)</label>
+              <input type="text" id="scrape-include-patterns" class="form-control form-control-mono" placeholder="*/product/*">
+              <div class="form-help" data-i18n="helpPatterns">Comma separated; * is a wildcard. Empty = follow everything.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="scrape-exclude-patterns" data-i18n="excludePatterns">Never follow URLs matching (optional)</label>
+              <input type="text" id="scrape-exclude-patterns" class="form-control form-control-mono" placeholder="*/logout*, */cart*">
+            </div>
           </div>
           <div style="margin-top: 16px;">
             <button class="btn btn-primary" id="btn-start-scraping" style="padding: 10px 24px; font-size: 14px;">

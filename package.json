@@ -2,13 +2,15 @@
   "name": "web-scraper",
   "version": "1.0.0",
   "description": "Free Web Scraping Chrome Extension built with pure HTML, CSS, and Vanilla JavaScript.",
-  "main": "background.js",
+  "main": "chrome-edge/background.js",
   "scripts": {
     "test": "node --test test/*.test.js",
     "build:panel": "node tools/build_panel.js",
     "check:panel": "node tools/build_panel.js --check",
     "build:tor": "node tools/build_tor.js",
-    "check:tor": "node tools/build_tor.js --check"
+    "check:tor": "node tools/build_tor.js --check",
+    "build": "node tools/build_panel.js && node tools/build_tor.js",
+    "check": "node tools/build_panel.js --check && node tools/build_tor.js --check"
   },
   "keywords": [
     "web-scraper",

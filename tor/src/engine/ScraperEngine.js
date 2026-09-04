@@ -23,6 +23,10 @@
         pageLoadDelay: 1000,
         maxPages: 500,
         concurrency: 1,
+        requestRetries: 0,        // Ö3: extra attempts per failed page (exponential backoff)
+        maxDepth: 0,              // Ö3: 0 = unlimited link depth
+        includeUrlPatterns: [],   // Ö3: glob list; empty = follow everything
+        excludeUrlPatterns: [],   // Ö3: glob list; matching URLs are never enqueued
         fetcher: null // custom DOM fetcher function: async (url) => { document, url }
       }, options);
 
@@ -42,6 +46,7 @@
         pageStart: [],
         pageComplete: [],
         recordScraped: [],
+        retry: [],
         error: [],
         finish: []
       };
@@ -181,6 +186,58 @@
       };
     }
 
+    /**
+     * Ö3: wildcard URL pattern matching. A pattern without any `*` is
+     * treated as a substring match (surrounded with wildcards) so users can
+     * simply type a domain or path fragment.
+     */
+    static globToRegExp(pattern) {
+      let p = String(pattern).trim().toLowerCase();
+      if (!p) return null;
+      if (!p.includes('*')) p = `*${p}*`;
+      const escaped = p.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+      return new RegExp(`^${escaped}$`, 'i');
+    }
+
+    urlAllowed(url) {
+      const excludes = Array.isArray(this.options.excludeUrlPatterns) ? this.options.excludeUrlPatterns : [];
+      for (const pat of excludes) {
+        const re = ScraperEngine.globToRegExp(pat);
+        if (re && re.test(url)) return false;
+      }
+      const includes = Array.isArray(this.options.includeUrlPatterns) ? this.options.includeUrlPatterns : [];
+      if (includes.length === 0) return true;
+      return includes.some((pat) => {
+        const re = ScraperEngine.globToRegExp(pat);
+        return re && re.test(url);
+      });
+    }
+
+    /** Exponential backoff between retry attempts, capped at 30 s. */
+    retryDelayMs(attempt) {
+      const base = this.options.requestInterval > 0 ? this.options.requestInterval : 1000;
+      return Math.min(base * Math.pow(2, attempt), 30000);
+    }
+
+    /** Wraps the fetcher with retry/backoff and emits `retry` events. */
+    async fetchWithRetry(fetcher, url) {
+      const attempts = Math.max(1, (parseInt(this.options.requestRetries, 10) || 0) + 1);
+      let lastErr = null;
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        if (this.isStopped) throw new Error('Scrape stopped.');
+        try {
+          return await fetcher(url);
+        } catch (err) {
+          lastErr = err;
+          if (attempt < attempts - 1) {
+            this.emit('retry', { url: url, attempt: attempt + 1, ofAttempts: attempts - 1, error: (err && err.message) || String(err) });
+            await this.sleep(this.retryDelayMs(attempt));
+          }
+        }
+      }
+      throw lastErr;
+    }
+
     async runLoop() {
       const fetcher = this.options.fetcher || this.defaultFetcher.bind(this);
 
@@ -208,7 +265,7 @@
         }
 
         try {
-          const fetchResult = await fetcher(job.url);
+          const fetchResult = await this.fetchWithRetry(fetcher, job.url);
           const doc = fetchResult.document;
           const currentUrl = fetchResult.url || job.url;
 
@@ -256,6 +313,10 @@
     enqueueJob(jobSpec) {
       const key = `${jobSpec.parentSelectorId}|${jobSpec.url}`;
       if (this.enqueuedKeys.has(key) || this.visitedUrls.has(jobSpec.url)) return false;
+      // Ö3: respect the link depth budget (start URLs sit at depth 0).
+      if (this.options.maxDepth > 0 && (jobSpec.depth || 0) > this.options.maxDepth) return false;
+      // Ö3: respect include/exclude URL patterns (never gate start URLs).
+      if ((jobSpec.depth || 0) > 0 && !this.urlAllowed(jobSpec.url)) return false;
       this.enqueuedKeys.add(key);
       this.queue.push(jobSpec);
       return true;

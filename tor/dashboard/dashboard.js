@@ -1605,6 +1605,16 @@
     const requestInterval = Number.isFinite(parsedInterval) && parsedInterval >= 0 ? parsedInterval : 2000;
     const pageLoadDelay = Number.isFinite(parsedPageDelay) && parsedPageDelay >= 0 ? parsedPageDelay : 2000;
     const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
+    const retriesRaw = parseInt(document.getElementById('scrape-request-retries').value, 10);
+    const requestRetries = Number.isFinite(retriesRaw) && retriesRaw >= 0 ? Math.min(retriesRaw, 5) : 1;
+    const maxDepthRaw = parseInt(document.getElementById('scrape-max-depth').value, 10);
+    const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw >= 0 ? maxDepthRaw : 0;
+    const splitPatterns = (value) => String(value || '')
+      .split(/[\n,]/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const includeUrlPatterns = splitPatterns((document.getElementById('scrape-include-patterns') || {}).value);
+    const excludeUrlPatterns = splitPatterns((document.getElementById('scrape-exclude-patterns') || {}).value);
 
     elements.scrapeLogBox.innerHTML = '';
     scrapeLogHistory = [];
@@ -1617,6 +1627,10 @@
       requestInterval: requestInterval,
       pageLoadDelay: pageLoadDelay,
       maxPages: maxPages,
+      requestRetries: requestRetries,
+      maxDepth: maxDepth,
+      includeUrlPatterns: includeUrlPatterns,
+      excludeUrlPatterns: excludeUrlPatterns,
       fetcher: createTabOrFetchRunner()
     });
 
@@ -1632,6 +1646,10 @@
 
     state.scraperEngine.on('recordScraped', () => {
       elements.metricRecords.textContent = state.scraperEngine.results.length;
+    });
+
+    state.scraperEngine.on('retry', (info) => {
+      logScrape(t('scrapeRetrying', { url: info.url, attempt: info.attempt, ofAttempts: info.ofAttempts }), 'warn');
     });
 
     state.scraperEngine.on('error', (err) => {
