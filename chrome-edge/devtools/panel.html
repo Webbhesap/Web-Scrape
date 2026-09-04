@@ -935,6 +935,8 @@
           <tr><td><kbd>Ctrl+Alt+S</kbd></td><td data-i18n="scToggleScrape">Start / pause scraping</td></tr>
           <tr><td><kbd>Ctrl+Alt+D</kbd></td><td data-i18n="scDataView">Scraped data view</td></tr>
           <tr><td><kbd>Ctrl+Alt+G</kbd></td><td data-i18n="scGraph">Selector graph</td></tr>
+          <tr><td><kbd>Ctrl+Z</kbd></td><td data-i18n="scUndo">Undo selector change</td></tr>
+          <tr><td><kbd>Ctrl+Y</kbd> / <kbd>Ctrl+Shift+Z</kbd></td><td data-i18n="scRedo">Redo selector change</td></tr>
           <tr><td><kbd>?</kbd></td><td data-i18n="scHelp">Open this help</td></tr>
           <tr><td><kbd>Esc</kbd></td><td data-i18n="scCloseHelp">Close dialogs</td></tr>
           <tr class="help-section"><td colspan="2" data-i18n="scPickerHeading">Selector picker (on page)</td></tr>
@@ -963,7 +965,8 @@
   <script src="../lib/i18n.js"></script>
   <script src="../lib/transforms.js"></script>
   <script src="../lib/datamode.js"></script>
-  <script src="../lib/sitemap_templates.js"></script>
+  <script src="../lib/undo_stack.js"></script>
+<script src="../lib/sitemap_templates.js"></script>
 <script src="../lib/download_manager.js"></script>
 <script src="../lib/zip.js"></script>
   <script src="../dashboard/dashboard.js"></script>

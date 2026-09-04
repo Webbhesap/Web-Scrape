@@ -244,4 +244,4 @@ Her adımdan sonra: `npm test` (tümü yeşil olmalı), `node tools/build_tor.js
 - [x] Ö7 Galeri indirme yöneticisi
 - [x] Ö8 Site haritası şablonları
 - [x] Ö9 Klavye kısayolları + yardım diyaloğu
-- [ ] Ö10 Geri al/Yinele + webscraper.io uyumluluğu
+- [x] Ö10 Geri al/Yinele + webscraper.io uyumluluğu

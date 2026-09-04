@@ -10,6 +10,7 @@
   const state = {
     downloadQueue: null,
     sitemapTemplates: [],
+    selectorHistory: null,
     currentView: 'sitemaps',
     sitemaps: [],
     currentSitemap: null,
@@ -461,6 +462,8 @@
     }
 
     state.currentSitemap = new Sitemap(rawData);
+    state.selectorHistory = UndoStack.create(50);
+    state.selectorHistory.commit(state.currentSitemap.selectors.map((sel) => sel.toJSON ? sel.toJSON() : { ...sel }));
     state.currentParentSelector = '_root';
     state.parentHierarchyPath = ['_root'];
 
@@ -472,6 +475,23 @@
     } else {
       switchView(targetView);
     }
+  }
+
+  // Ö10 — selector undo/redo ------------------------------------------------
+  function snapshotSelectors() {
+    if (!state.currentSitemap) return [];
+    return state.currentSitemap.selectors.map((sel) => (sel.toJSON ? sel.toJSON() : { ...sel }));
+  }
+
+  function commitSelectorHistory() {
+    if (state.selectorHistory) state.selectorHistory.commit(snapshotSelectors());
+  }
+
+  async function applySelectorSnapshot(snapshot) {
+    if (!state.currentSitemap || !Array.isArray(snapshot)) return;
+    state.currentSitemap.selectors = snapshot.map((raw) => new Selector(JSON.parse(JSON.stringify(raw))));
+    await AppStorage.saveSitemap(state.currentSitemap);
+    renderSelectorsList();
   }
 
   function renderSelectorsList() {
@@ -650,6 +670,7 @@
       return;
     }
     await AppStorage.saveSitemap(state.currentSitemap);
+    commitSelectorHistory();
     renderSelectorsList();
   }
 
@@ -1074,6 +1095,7 @@
     state.currentSitemap.addSelector(selectorInstance);
     await AppStorage.saveSitemap(state.currentSitemap);
     await loadSitemaps();
+    commitSelectorHistory();
 
     switchView('selectors');
   }
@@ -1094,6 +1116,7 @@
 
     state.currentSitemap.removeSelector(selectorId);
     await AppStorage.saveSitemap(state.currentSitemap);
+    commitSelectorHistory();
     renderSelectorsList();
   }
 
@@ -1532,7 +1555,9 @@
         const failures = [];
         for (const item of backupList) {
           try {
-            const sm = new Sitemap(item);
+            const normalizedItem = Sitemap.normalizeImported(item);
+            if (!normalizedItem) throw new Error('Not a sitemap object');
+            const sm = new Sitemap(normalizedItem);
             const v = sm.validate();
             if (!v.isValid) {
               failures.push(`${sm._id || '?'}: ${v.errors.join(' ')}`);
@@ -1559,7 +1584,12 @@
         parsed.name = nameOverride;
       }
 
-      const sitemap = new Sitemap(parsed);
+      const normalized = Sitemap.normalizeImported(parsed);
+      if (!normalized) {
+        showImportError(t('invalidSitemapJson', { msg: 'Not a sitemap object' }));
+        return;
+      }
+      const sitemap = new Sitemap(nameOverride ? { ...normalized, _id: nameOverride, name: nameOverride } : normalized);
       const validation = sitemap.validate();
       if (!validation.isValid) {
         showImportError(t('invalidSitemapJson', { msg: validation.errors.join(' ') }));
@@ -2182,7 +2212,7 @@
       switchView('scrape');
     }
 
-    document.addEventListener('keydown', (e) => {
+    document.addEventListener('keydown', async (e) => {
       const help = document.getElementById('help-overlay');
       if (help && !help.hidden) {
         if (e.key === 'Escape') {
@@ -2190,6 +2220,22 @@
           closeHelpDialog();
         }
         return;
+      }
+
+      // Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) — selector undo/redo, but never
+      // while typing (native text undo must keep working in form fields).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !isTypingTarget(e.target)) {
+        const k = (e.key || '').toLowerCase();
+        if (k === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          if (state.selectorHistory) await applySelectorSnapshot(state.selectorHistory.undo(snapshotSelectors()));
+          return;
+        }
+        if (k === 'y' || (k === 'z' && e.shiftKey)) {
+          e.preventDefault();
+          if (state.selectorHistory) await applySelectorSnapshot(state.selectorHistory.redo(snapshotSelectors()));
+          return;
+        }
       }
 
       if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) {

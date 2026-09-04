@@ -166,7 +166,8 @@ function bootDashboard() {
     'src/engine/CssSelectorGenerator.js', 'src/engine/SelectorEngine.js',
     'src/engine/DataFlattener.js', 'src/engine/ScraperEngine.js',
     'src/storage/Storage.js', 'src/export/Exporter.js', 'src/ui/SelectorGraph.js',
-    'lib/i18n.js', 'lib/zip.js', 'lib/download_manager.js', 'lib/sitemap_templates.js',
+    'lib/i18n.js', 'lib/zip.js',
+    'lib/undo_stack.js', 'lib/download_manager.js', 'lib/sitemap_templates.js',
     'dashboard/dashboard.js'
   ];
   for (const rel of scripts) {

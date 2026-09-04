@@ -63,7 +63,8 @@ test('Scrape monitor - log box caps rendered entries at 500', () => {
     'src/engine/CssSelectorGenerator.js', 'src/engine/SelectorEngine.js',
     'src/engine/DataFlattener.js', 'src/engine/ScraperEngine.js',
     'src/storage/Storage.js', 'src/export/Exporter.js', 'src/ui/SelectorGraph.js',
-    'lib/i18n.js', 'lib/zip.js', 'lib/sitemap_templates.js', 'dashboard/dashboard.js'
+    'lib/i18n.js', 'lib/zip.js',
+    'lib/undo_stack.js', 'lib/sitemap_templates.js', 'dashboard/dashboard.js'
   ];
   for (const rel of SCRIPTS) {
     const el = window.document.createElement('script');

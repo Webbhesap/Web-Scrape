@@ -228,6 +228,66 @@
       };
     }
 
+    /**
+     * Ö10 — normalizes imported sitemap JSON (ours or webscraper.io's):
+     * keeps only the fields we understand, drops unknown ones safely,
+     * fills missing fields with defaults and filters broken selector rows.
+     * Returns null when the input is not a usable object.
+     */
+    static normalizeImported(data) {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+
+      const rawId = String(data._id || data.id || '').trim();
+      const name = String(data.name || rawId || 'imported_sitemap').trim();
+
+      let startUrls = data.startUrl || data.startUrls || [];
+      if (typeof startUrls === 'string') startUrls = [startUrls];
+      if (!Array.isArray(startUrls)) startUrls = [];
+      startUrls = startUrls.filter((u) => typeof u === 'string' && u.trim() !== '');
+
+      const rawSelectors = Array.isArray(data.selectors) ? data.selectors : [];
+      const selectors = [];
+      for (const sel of rawSelectors) {
+        if (!sel || typeof sel !== 'object') continue;
+        const clean = {
+          id: sel.id,
+          type: sel.type,
+          selector: sel.selector,
+          multiple: sel.multiple === true,
+          delay: sel.delay,
+          regex: sel.regex,
+          defaultValue: sel.defaultValue,
+          transforms: Array.isArray(sel.transforms) ? sel.transforms : [],
+          parentSelectors: Array.isArray(sel.parentSelectors) && sel.parentSelectors.length
+            ? sel.parentSelectors
+            : ['_root']
+        };
+        // Known type-specific fields (webscraper.io uses the same names);
+        // anything else — e.g. clickElementUniquenessType — is ignored.
+        for (const key of [
+          'linkType', 'downloadImage', 'tableHeaderRowSelector', 'tableDataRowSelector', 'columns',
+          'extractAttribute', 'outerHTML', 'delimiter', 'paginationType', 'maxPages',
+          'clickElementSelector', 'clickType', 'clickDelay', 'discardInitialElements',
+          'scrollElementSelector', 'scrollDelay', 'maxScrolls'
+        ]) {
+          if (sel[key] !== undefined) clean[key] = sel[key];
+        }
+        selectors.push(clean);
+      }
+
+      const options = (data.options && typeof data.options === 'object' && !Array.isArray(data.options))
+        ? data.options
+        : {};
+
+      return {
+        _id: rawId || name,
+        name: name,
+        startUrl: startUrls,
+        selectors: selectors,
+        options: options
+      };
+    }
+
     static fromJSON(json) {
       if (typeof json === 'string') {
         json = JSON.parse(json);
