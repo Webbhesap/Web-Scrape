@@ -1548,6 +1548,17 @@
   // SCRAPING RUNTIME CONTROLLER
   function bindScraperEvents() {
     document.getElementById('btn-start-scraping').addEventListener('click', () => startScraping());
+
+    // Ö4: the merge key column only matters in merge mode.
+    const dataModeSel = document.getElementById('scrape-data-mode');
+    if (dataModeSel) {
+      const mergeKeyInput = document.getElementById('scrape-merge-key');
+      const syncMergeKey = () => {
+        if (mergeKeyInput) mergeKeyInput.disabled = dataModeSel.value !== 'merge';
+      };
+      dataModeSel.addEventListener('change', syncMergeKey);
+      syncMergeKey();
+    }
     elements.btnScrapePause.addEventListener('click', () => {
       if (state.scraperEngine) state.scraperEngine.pause();
     });
@@ -1660,7 +1671,22 @@
 
     state.scraperEngine.on('finish', async (summary) => {
       logScrape(t('scrapeFinished', { records: summary.totalRecords, pages: summary.pagesVisited, time: (summary.elapsedMs / 1000).toFixed(1) }), 'success');
-      await AppStorage.saveScrapedData(state.currentSitemap._id, summary.results);
+
+      // Ö4: incremental scraping — combine with previously stored records.
+      const dataMode = (document.getElementById('scrape-data-mode') || {}).value || 'replace';
+      const mergeKey = ((document.getElementById('scrape-merge-key') || {}).value || '').trim();
+      let toSave = summary.results;
+      if (dataMode !== 'replace') {
+        const previous = await AppStorage.getScrapedData(state.currentSitemap._id);
+        if (typeof DataModes !== 'undefined' && DataModes && DataModes.apply) {
+          toSave = DataModes.apply(dataMode, previous, summary.results, mergeKey);
+          if (dataMode === 'merge' && !mergeKey) {
+            logScrape(t('mergeKeyMissing'), 'warn');
+          }
+          logScrape(t('dataModeSummary', { mode: dataMode, total: toSave.length }), 'success');
+        }
+      }
+      await AppStorage.saveScrapedData(state.currentSitemap._id, toSave);
       openBrowseData();
     });
 
