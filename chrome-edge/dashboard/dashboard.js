@@ -2141,6 +2141,82 @@
       }, { passive: false });
     }
 
+    // Ö9 — global keyboard shortcuts + help dialog ------------------------
+    function openHelpDialog() {
+      const help = document.getElementById('help-overlay');
+      if (!help) return;
+      help.hidden = false;
+      const closeBtn = document.getElementById('btn-help-close');
+      if (closeBtn) closeBtn.focus();
+    }
+
+    function closeHelpDialog() {
+      const help = document.getElementById('help-overlay');
+      if (help) help.hidden = true;
+    }
+
+    const btnHelpClose = document.getElementById('btn-help-close');
+    if (btnHelpClose) btnHelpClose.addEventListener('click', closeHelpDialog);
+    const helpOverlay = document.getElementById('help-overlay');
+    if (helpOverlay) {
+      // Click on the backdrop (not the dialog) also closes.
+      helpOverlay.addEventListener('click', (e) => {
+        if (e.target === helpOverlay) closeHelpDialog();
+      });
+    }
+
+    function isTypingTarget(target) {
+      if (!target || !target.tagName) return false;
+      const tag = target.tagName.toUpperCase();
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable === true;
+    }
+
+    function toggleScrapeRunState() {
+      const engine = state.scraperEngine;
+      if (engine && engine.isRunning) {
+        if (engine.isPaused) engine.resume();
+        else engine.pause();
+      } else {
+        startScraping(); // guards itself when no sitemap is selected
+      }
+      switchView('scrape');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const help = document.getElementById('help-overlay');
+      if (help && !help.hidden) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeHelpDialog();
+        }
+        return;
+      }
+
+      if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) {
+        const k = (e.key || '').toLowerCase();
+        if (k === 'n') {
+          e.preventDefault();
+          openCreateSitemapMeta();
+        } else if (k === 's') {
+          e.preventDefault();
+          toggleScrapeRunState();
+        } else if (k === 'd') {
+          e.preventDefault();
+          switchView('export-data');
+        } else if (k === 'g') {
+          e.preventDefault();
+          if (state.currentSitemap) switchView('selector-graph');
+        }
+        return;
+      }
+
+      // '?' (and F1) open the help dialog, but never while typing.
+      if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '?' || e.key === 'F1') && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        openHelpDialog();
+      }
+    });
+
     document.addEventListener('keydown', (e) => {
       const overlay = document.getElementById('slideshow-overlay');
       if (!overlay || !overlay.classList.contains('open')) return;

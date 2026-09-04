@@ -921,6 +921,32 @@
   </div>
 
   <!-- Load Scripts -->
+  <!-- Ö9 — keyboard shortcuts help dialog -->
+  <div class="help-overlay" id="help-overlay" hidden>
+    <div class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <div class="help-dialog-header">
+        <div class="card-title"><span data-i18n="helpTitle">Keyboard shortcuts</span></div>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-help-close" data-i18n="close">Close</button>
+      </div>
+      <table class="help-table">
+        <thead><tr><th data-i18n="scShortcut">Shortcut</th><th data-i18n="scAction">Action</th></tr></thead>
+        <tbody id="help-shortcuts-body">
+          <tr><td><kbd>Ctrl+Alt+N</kbd></td><td data-i18n="scNewSitemap">New sitemap</td></tr>
+          <tr><td><kbd>Ctrl+Alt+S</kbd></td><td data-i18n="scToggleScrape">Start / pause scraping</td></tr>
+          <tr><td><kbd>Ctrl+Alt+D</kbd></td><td data-i18n="scDataView">Scraped data view</td></tr>
+          <tr><td><kbd>Ctrl+Alt+G</kbd></td><td data-i18n="scGraph">Selector graph</td></tr>
+          <tr><td><kbd>?</kbd></td><td data-i18n="scHelp">Open this help</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td data-i18n="scCloseHelp">Close dialogs</td></tr>
+          <tr class="help-section"><td colspan="2" data-i18n="scPickerHeading">Selector picker (on page)</td></tr>
+          <tr><td><kbd>P</kbd></td><td data-i18n="scPickerPick">Pick element under the cursor</td></tr>
+          <tr><td><kbd>C</kbd></td><td data-i18n="scPickerParent">Select parent element</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td data-i18n="scPickerConfirm">Confirm the selection</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td data-i18n="scPickerCancel">Cancel picking</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <script src="../lib/csv.js"></script>
   <script src="../lib/xlsx.js"></script>
   <script src="../lib/icons.js"></script>
