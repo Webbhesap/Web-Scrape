@@ -9,6 +9,7 @@
 
   // Application State
   const state = {
+    downloadQueue: null,
     currentView: 'sitemaps',
     sitemaps: [],
     currentSitemap: null,
@@ -1966,6 +1967,17 @@
     const btnSelNone = document.getElementById('btn-gallery-select-none');
     if (btnSelNone) btnSelNone.addEventListener('click', () => setGallerySelection(false));
 
+    const btnDlAll = document.getElementById('btn-gallery-download-all');
+    if (btnDlAll) btnDlAll.addEventListener('click', () => startGalleryDownloads());
+    const btnDmCancel = document.getElementById('btn-dm-cancel');
+    if (btnDmCancel) btnDmCancel.addEventListener('click', () => {
+      if (state.downloadQueue) state.downloadQueue.cancel();
+    });
+    const btnDmRetry = document.getElementById('btn-dm-retry');
+    if (btnDmRetry) btnDmRetry.addEventListener('click', async () => {
+      if (state.downloadQueue) await resumeGalleryDownloads(state.downloadQueue);
+    });
+
     // Auto-hiding slideshow chrome. The cursor is hidden together with the
     // controls (via the `idle` class) so nothing floats over the image.
     let chromeHideTimer = null;
@@ -2813,6 +2825,76 @@
     const objectUrl = URL.createObjectURL(blob);
     triggerDownload(objectUrl, 'gallery.zip');
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+  }
+
+  // Ö7 — gallery download manager -------------------------------------------
+  function renderDownloadPanel(summary) {
+    const panel = document.getElementById('gallery-dm-panel');
+    if (!panel) return;
+    panel.style.display = 'block';
+    const bar = document.getElementById('dm-progress');
+    if (bar) bar.style.width = summary.percent + '%';
+    const status = document.getElementById('dm-status');
+    if (status) status.textContent = t('dmStatus', { done: summary.done, total: summary.total });
+    const retry = document.getElementById('btn-dm-retry');
+    if (retry) retry.style.display = summary.failed > 0 ? '' : 'none';
+    const failedBox = document.getElementById('dm-failed');
+    if (failedBox) {
+      if (summary.failed > 0) {
+        failedBox.style.display = 'block';
+        failedBox.innerHTML = '';
+        const title = document.createElement('div');
+        title.textContent = t('dmFailed', { n: summary.failed });
+        title.style.cssText = 'color:#f87171; margin-bottom:4px;';
+        failedBox.appendChild(title);
+        summary.failedItems.forEach((it) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'color:#fca5a5; overflow:hidden; text-overflow:ellipsis;';
+          row.textContent = it.name + ' — ' + (it.error || '?');
+          row.title = it.url;
+          failedBox.appendChild(row);
+        });
+      } else {
+        failedBox.style.display = 'none';
+        failedBox.innerHTML = '';
+      }
+    }
+  }
+
+  async function startGalleryDownloads() {
+    const items = state.galleryItems && state.galleryItems.length ? state.galleryItems : collectGalleryItems(state.scrapedData);
+    if (!items.length) return;
+    const queue = DownloadManager.createQueue({
+      concurrency: 3,
+      fetchImpl: async (url) => {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return new Uint8Array(await resp.arrayBuffer());
+      }
+    });
+    state.downloadQueue = queue;
+    queue.onProgress(renderDownloadPanel);
+    renderDownloadPanel(queue.summary());
+    queue.add(items.map((it) => it.url));
+    await runDownloadQueue(queue);
+  }
+
+  async function resumeGalleryDownloads(queue) {
+    queue.retryFailed();
+    await runDownloadQueue(queue);
+  }
+
+  async function runDownloadQueue(queue) {
+    const summary = await queue.run();
+    const okItems = queue.items.filter((it) => it.status === 'done' && it.bytes);
+    okItems.forEach((it) => {
+      const blob = new Blob([it.bytes]);
+      const objectUrl = URL.createObjectURL(blob);
+      triggerDownload(objectUrl, it.name);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+    });
+    renderDownloadPanel(queue.summary());
+    return summary;
   }
 
   function populateFindColumns(headers) {

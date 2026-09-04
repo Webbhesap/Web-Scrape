@@ -772,7 +772,19 @@
             <span class="badge" id="gallery-selected-badge" style="display:none; background:rgba(45,212,191,0.2); color:#2dd4bf;"></span>
             <button class="btn btn-secondary btn-sm" id="btn-gallery-zip-all" data-i18n="downloadZip">Download ZIP</button>
             <button class="btn btn-secondary btn-sm" id="btn-gallery-zip-selected" data-i18n="downloadSelected">ZIP selected</button>
+            <button class="btn btn-primary btn-sm" id="btn-gallery-download-all" data-i18n="downloadImages">Download images</button>
           </div>
+        </div>
+        <div id="gallery-dm-panel" style="display:none; padding: 10px 14px; border-bottom: 1px solid rgba(148,163,184,0.15);">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="flex:1; height:8px; background:rgba(148,163,184,0.2); border-radius:4px; overflow:hidden;">
+              <div id="dm-progress" style="height:100%; width:0%; background:#2dd4bf; transition:width .15s ease;"></div>
+            </div>
+            <span id="dm-status" style="font-size:12px; white-space:nowrap;">0/0</span>
+            <button class="btn btn-secondary btn-sm" id="btn-dm-cancel" data-i18n="cancel">Cancel</button>
+            <button class="btn btn-secondary btn-sm" id="btn-dm-retry" data-i18n="dmRetryFailed" style="display:none;">Retry failed</button>
+          </div>
+          <div id="dm-failed" style="display:none; margin-top:8px; max-height:120px; overflow:auto; font-size:12px;"></div>
         </div>
         <div class="gallery-grid" id="gallery-grid" style="grid-template-columns: repeat(4, 1fr);"></div>
       </div>
@@ -911,7 +923,8 @@
   <script src="../lib/i18n.js"></script>
   <script src="../lib/transforms.js"></script>
   <script src="../lib/datamode.js"></script>
-  <script src="../lib/zip.js"></script>
+  <script src="../lib/download_manager.js"></script>
+<script src="../lib/zip.js"></script>
   <script src="../dashboard/dashboard.js"></script>
 </body>
 </html>
