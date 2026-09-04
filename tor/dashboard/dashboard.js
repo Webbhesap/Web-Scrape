@@ -2096,6 +2096,52 @@
       }
     });
 
+    const btnXlsx = document.getElementById('btn-download-xlsx');
+    if (btnXlsx) {
+      btnXlsx.addEventListener('click', async () => {
+        if (state.currentSitemap && state.scrapedData.length > 0) {
+          try {
+            await Exporter.downloadXLSX(state.scrapedData, state.currentSitemap.name);
+          } catch (e) {
+            console.warn('XLSX export failed:', e);
+            alert(t('xlsxFailed', { msg: e && e.message ? e.message : e }));
+          }
+        }
+      });
+    }
+
+    const btnCopyHtml = document.getElementById('btn-copy-data-html');
+    if (btnCopyHtml) {
+      btnCopyHtml.addEventListener('click', async () => {
+        const rows = state.filteredData.length ? state.filteredData : state.scrapedData;
+        if (!rows.length) return;
+        const visibleRows = state.dataHiddenCols.length
+          ? rows.map((row) => {
+              const out = {};
+              for (const key of Object.keys(row)) {
+                if (!state.dataHiddenCols.includes(key)) out[key] = row[key];
+              }
+              return out;
+            })
+          : rows;
+        const html = Exporter.buildHtmlTable(visibleRows);
+        try {
+          if (navigator.clipboard && window.ClipboardItem) {
+            await navigator.clipboard.write([new ClipboardItem({
+              'text/html': new Blob([html], { type: 'text/html' }),
+              'text/plain': new Blob([Exporter.toCSV(visibleRows, { bom: false })], { type: 'text/plain' })
+            })]);
+            alert(t('copiedHtmlTable', { n: visibleRows.length }));
+          } else {
+            throw new Error('ClipboardItem unsupported');
+          }
+        } catch (e) {
+          console.warn('Rich clipboard copy failed:', e);
+          alert(t('clipboardFallback'));
+        }
+      });
+    }
+
     const btnTsv = document.getElementById('btn-download-tsv');
     if (btnTsv) {
       btnTsv.addEventListener('click', () => {

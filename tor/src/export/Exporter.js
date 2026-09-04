@@ -114,6 +114,23 @@
     }
 
     /**
+     * Ö6: downloads a real Office Open XML workbook (.xlsx).
+     */
+    static async downloadXLSX(data, sitemapName) {
+      const bytes = await XLSX.generateXlsx(data, sitemapName);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const filename = `${sanitizeFilename(sitemapName)}_data.xlsx`;
+      downloadBlob(blob, filename);
+    }
+
+    /**
+     * Ö6: rich HTML table markup (for clipboard pasting into spreadsheets).
+     */
+    static buildHtmlTable(data) {
+      return XLSX.buildHtmlTable(data);
+    }
+
+    /**
      * Downloads scraped data as JSON file.
      */
     static downloadJSON(data, sitemapName) {
