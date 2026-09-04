@@ -185,7 +185,7 @@
 
     // 3. Find lowest common ancestor parent with child selector
     const parents = elements.map(el => el.parentElement).filter(Boolean);
-    if (parents.length === elements.length && parents.every((p, i) => p === parents[0])) {
+    if (parents.length === elements.length && parents.every((p) => p === parents[0])) {
       // All elements have the same parent
       const parentSel = getUniqueSelectorForElement(parents[0], doc);
       const childTag = allSameTag ? firstTag : '*';

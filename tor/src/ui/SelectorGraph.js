@@ -108,7 +108,8 @@
         children: []
       };
 
-      const visited = new Set(['_root']);
+      // `visitedPath` (a per-branch chain) guards cycles; the previous global
+      // `visited` set was dead code.
       const buildSubtree = (parentId, visitedPath) => {
         const children = this.sitemap.getDirectChildSelectors(parentId);
         const childNodes = [];

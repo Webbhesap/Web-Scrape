@@ -1,5 +1,10 @@
 /**
  * Web Scraper Popup Controller.
+ *
+ * All three actions (open app / scrape current page / sitemap shortcuts)
+ * funnel through one openDashboard() helper — previously every button
+ * duplicated its own chrome.tabs + lastError handling and the sitemap
+ * buttons missed the fallback path entirely.
  */
 (function () {
   'use strict';
@@ -14,41 +19,48 @@
 
     const t = (key) => (typeof AppI18n !== 'undefined' ? AppI18n.t(key) : key);
 
+    const isExtension = () => typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create;
+
+    /** Open the dashboard (optionally with a query string) in a new tab. */
+    function openDashboard(query) {
+      if (isExtension()) {
+        chrome.tabs.create(
+          { url: chrome.runtime.getURL('dashboard/dashboard.html' + (query || '')) },
+          () => { if (chrome.runtime.lastError) { /* consume */ } }
+        );
+      } else {
+        window.open('../dashboard/dashboard.html' + (query || ''), '_blank');
+      }
+    }
+
     // Open Dashboard Button
     document.getElementById('btn-open-dashboard').addEventListener('click', () => {
-      if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
-        chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') }, () => {
-          if (chrome.runtime.lastError) { /* consume */ }
-        });
-      } else {
-        window.open('../dashboard/dashboard.html', '_blank');
-      }
+      openDashboard('');
     });
 
-    // Scrape Current Page Button
+    // Scrape Current Page Button — pre-fills the create-sitemap URL field
     document.getElementById('btn-scrape-current-tab').addEventListener('click', () => {
-      if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+      if (isExtension() && chrome.tabs.query) {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (!chrome.runtime.lastError && tabs && tabs.length > 0 && tabs[0].url) {
-            const currentUrl = tabs[0].url;
-            const dashboardUrl = chrome.runtime.getURL(`dashboard/dashboard.html?newUrl=${encodeURIComponent(currentUrl)}`);
-            chrome.tabs.create({ url: dashboardUrl }, () => {
-              if (chrome.runtime.lastError) { /* consume */ }
-            });
+          if (!chrome.runtime.lastError && tabs && tabs.length > 0 && tabs[0].url && /^https?:/i.test(tabs[0].url)) {
+            openDashboard(`?newUrl=${encodeURIComponent(tabs[0].url)}`);
           } else {
-            const dashboardUrl = chrome.runtime.getURL('dashboard/dashboard.html');
-            chrome.tabs.create({ url: dashboardUrl }, () => {
-              if (chrome.runtime.lastError) { /* consume */ }
-            });
+            openDashboard('');
           }
         });
       } else {
-        window.open('../dashboard/dashboard.html', '_blank');
+        openDashboard('');
       }
     });
 
-    // Load sitemaps in popup
-    const sitemaps = await AppStorage.getAllSitemaps();
+    // Load sitemaps in popup. A storage failure must not kill the whole
+    // popup with an unhandled rejection — degrade to the empty state instead.
+    let sitemaps = [];
+    try {
+      sitemaps = (await AppStorage.getAllSitemaps()) || [];
+    } catch (e) {
+      console.warn('Popup: failed to load sitemaps:', e);
+    }
     const listContainer = document.getElementById('popup-sitemap-list');
     listContainer.innerHTML = '';
 
@@ -69,13 +81,11 @@
       `;
 
       item.querySelector('.btn-scrape-sitemap').addEventListener('click', () => {
-        const url = chrome.runtime.getURL(`dashboard/dashboard.html?sitemap=${encodeURIComponent(s._id)}&view=scrape`);
-        chrome.tabs.create({ url: url });
+        openDashboard(`?sitemap=${encodeURIComponent(s._id)}&view=scrape`);
       });
 
       item.querySelector('.btn-data-sitemap').addEventListener('click', () => {
-        const url = chrome.runtime.getURL(`dashboard/dashboard.html?sitemap=${encodeURIComponent(s._id)}&view=browse-data`);
-        chrome.tabs.create({ url: url });
+        openDashboard(`?sitemap=${encodeURIComponent(s._id)}&view=browse-data`);
       });
 
       listContainer.appendChild(item);

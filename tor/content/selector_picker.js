@@ -22,7 +22,7 @@
   let tooltipEl = null;
   let toolbarEl = null;
   let previewModalEl = null;
-  let isElementPreviewActive = false;
+  let isElementPreviewActive = true;
   let scopeSelector = '';
   let scopeRoots = [];
   let lastPointerEvent = null;
@@ -194,11 +194,16 @@
     if (currentSelector && currentSelector.trim() !== '') {
       try {
         const matched = queryInScope(currentSelector);
-        matched.forEach(el => {
-          if (!selectedElements.includes(el)) {
-            el.classList.add('ws-preview-highlight');
-          }
-        });
+        // The Preview toolbar button toggles `isElementPreviewActive` — the
+        // outline follows the toggle now, while the match-count badge keeps
+        // updating either way so invalid selectors stay visible.
+        if (isElementPreviewActive) {
+          matched.forEach(el => {
+            if (!selectedElements.includes(el)) {
+              el.classList.add('ws-preview-highlight');
+            }
+          });
+        }
 
         const countBadge = document.getElementById('ws-match-count');
         if (countBadge) {
@@ -439,6 +444,8 @@
 
   function toggleElementPreview() {
     isElementPreviewActive = !isElementPreviewActive;
+    const btn = document.getElementById('ws-btn-preview');
+    if (btn) btn.style.opacity = isElementPreviewActive ? '' : '0.45';
     updateHighlights();
   }
 
@@ -480,7 +487,7 @@
       <div class="ws-modal-header">
         <div class="ws-modal-title">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg>
-          Data Preview (${elements.length} elements)
+          Data Preview — ${escapeHtml(selectorType || 'SelectorText')} (${elements.length} elements)
         </div>
         <button id="ws-modal-close-btn" class="ws-modal-close">&times;</button>
       </div>
@@ -518,7 +525,10 @@
 
   function finishSelection() {
     const selectorResult = currentSelector;
-    const multipleResult = selectedElements.length > 1;
+    // Honour the dashboard's current "multiple" setting in addition to the
+    // picked element count: picking a single container while the Multiple
+    // checkbox is on must not silently turn the flag back off.
+    const multipleResult = selectedElements.length > 1 || isMultiple === true;
 
     stopPicker();
 
@@ -553,6 +563,7 @@
       stopPicker();
     }
     isActive = true;
+    isElementPreviewActive = true; // element outline is on by default
     window.__webScraperPickerActive = true;
     currentSelector = options.selector || '';
     selectorType = options.selectorType || (options.type && String(options.type).startsWith('Selector') ? options.type : 'SelectorText');

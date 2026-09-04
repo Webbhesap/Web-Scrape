@@ -32,7 +32,9 @@
     // Ö5: multi-column sort [{col, asc}], per-column filters, hidden columns
     dataSort: [],
     dataColumnFilters: {},
-    dataHiddenCols: []
+    dataHiddenCols: [],
+    // Sitemap whose data the browse view currently shows (resets filters on switch)
+    browseDataSitemapId: null
   };
 
   // DOM Elements Cache
@@ -230,6 +232,7 @@
     if (logoIcon) logoIcon.innerHTML = AppIcons.get('spider');
 
     document.querySelectorAll('.icon-chevron-down').forEach(el => el.innerHTML = AppIcons.get('chevronDown'));
+    document.querySelectorAll('.icon-chevron-right').forEach(el => el.innerHTML = AppIcons.get('chevronRight'));
     document.querySelectorAll('.icon-folder').forEach(el => el.innerHTML = AppIcons.get('folder'));
     document.querySelectorAll('.icon-plus').forEach(el => el.innerHTML = AppIcons.get('plus'));
     document.querySelectorAll('.icon-upload').forEach(el => el.innerHTML = AppIcons.get('upload'));
@@ -539,8 +542,6 @@
         ? (Selector.SELECTOR_TYPES[sel.type] || Selector.SELECTOR_TYPES.SelectorText)
         : { title: sel.type, acceptsChildren: false };
       const typeBadgeClass = getTypeBadgeClass(sel.type);
-
-      const hasChildren = state.currentSitemap.getDirectChildSelectors(sel.id).length > 0;
       const canHaveChildren = sel.acceptsChildren || typeMeta.acceptsChildren;
 
       tr.innerHTML = `
@@ -574,7 +575,7 @@
           <div style="display:inline-flex; gap:4px;">
             ${canHaveChildren ? `
               <button class="btn btn-secondary btn-sm action-children" title="Open Child Selectors">
-                <span class="icon-chevron-right"></span>
+                <span class="icon-chevron-right">${typeof AppIcons !== 'undefined' ? AppIcons.get('chevronRight') : ''}</span>
                 <span>${t('selectChildren')} (${state.currentSitemap.getDirectChildSelectors(sel.id).length})</span>
               </button>
             ` : ''}
@@ -1088,9 +1089,21 @@
       return;
     }
 
-    // If ID was changed during edit, clean old selector
-    if (state.editingSelectorId && state.editingSelectorId !== selData.id) {
-      state.currentSitemap.removeSelector(state.editingSelectorId);
+    // Renaming an existing selector must keep the hierarchy intact: children
+    // that reference the old id are re-pointed via renameSelector. Removing
+    // and re-adding (the previous behaviour) orphaned every child selector
+    // to `_root` and silently destroyed the nesting.
+    if (state.editingSelectorId) {
+      if (state.editingSelectorId !== selData.id && state.currentSitemap.getSelectorById(selData.id)) {
+        showSelectorError(t('selectorIdTaken', { id: selData.id }));
+        return;
+      }
+      if (state.editingSelectorId !== selData.id) {
+        state.currentSitemap.renameSelector(state.editingSelectorId, selData.id);
+      }
+    } else if (state.currentSitemap.getSelectorById(selData.id)) {
+      showSelectorError(t('selectorIdTaken', { id: selData.id }));
+      return;
     }
 
     state.currentSitemap.addSelector(selectorInstance);
@@ -1387,15 +1400,10 @@
 
     try {
       if (state.currentSitemap) {
-        // Editing existing sitemap metadata
+        // Editing existing sitemap metadata — reuse the model's URL
+        // normalizer instead of duplicating its prefix heuristic here.
         state.currentSitemap.name = rawName;
-        state.currentSitemap.startUrl = urls.map(u => {
-          const urlText = String(u).trim();
-          if (!urlText.startsWith('http://') && !urlText.startsWith('https://') && !urlText.startsWith('file://')) {
-            return 'https://' + urlText;
-          }
-          return urlText;
-        });
+        state.currentSitemap.startUrl = urls.map(u => Sitemap.normalizeUrl(String(u).trim()));
         
         if (!state.currentSitemap.options) state.currentSitemap.options = {};
         state.currentSitemap.options.shadowDom = !(elements.fieldSitemapShadow && elements.fieldSitemapShadow.checked === false);
@@ -1675,10 +1683,12 @@
     }
   }
 
-  // Full log history (the on-screen log box is capped, this is not).
+  // Full log history (the on-screen log box is capped; the downloadable
+  // history is capped too so marathon crawls cannot grow it unbounded).
   let scrapeLogHistory = [];
   let scrapeErrorCount = 0;
   const LOG_BOX_MAX_LINES = 500;
+  const LOG_HISTORY_MAX_LINES = 20000;
 
   function downloadScrapeLog() {
     if (!scrapeLogHistory.length) return;
@@ -1732,6 +1742,11 @@
     if (elements.metricErrors) elements.metricErrors.textContent = '0';
     logScrape(t('scrapeStarting', { name: state.currentSitemap.name || state.currentSitemap._id }), 'info');
 
+    // Bind results to the sitemap that was scraped when the run STARTED —
+    // switching sitemaps (or deleting one) mid-scrape used to make the finish
+    // handler write records into the wrong sitemap or crash on null.
+    const scrapeSitemapId = state.currentSitemap._id;
+
     // Initialize Scraper Engine
     state.scraperEngine = new ScraperEngine(state.currentSitemap, {
       requestInterval: requestInterval,
@@ -1776,7 +1791,7 @@
       const mergeKey = ((document.getElementById('scrape-merge-key') || {}).value || '').trim();
       let toSave = summary.results;
       if (dataMode !== 'replace') {
-        const previous = await AppStorage.getScrapedData(state.currentSitemap._id);
+        const previous = await AppStorage.getScrapedData(scrapeSitemapId);
         if (typeof DataModes !== 'undefined' && DataModes && DataModes.apply) {
           toSave = DataModes.apply(dataMode, previous, summary.results, mergeKey);
           if (dataMode === 'merge' && !mergeKey) {
@@ -1785,8 +1800,20 @@
           logScrape(t('dataModeSummary', { mode: dataMode, total: toSave.length }), 'success');
         }
       }
-      await AppStorage.saveScrapedData(state.currentSitemap._id, toSave);
-      openBrowseData();
+      await AppStorage.saveScrapedData(scrapeSitemapId, toSave);
+      // Auto-open the viewer only when the user is still on that sitemap.
+      if (state.currentSitemap && state.currentSitemap._id === scrapeSitemapId) {
+        // "Download image files locally" on an Image selector is now wired up:
+        // after the crawl, the gallery opens and its download queue starts.
+        const wantsImages = (state.currentSitemap.selectors || [])
+          .some((s) => s.type === 'SelectorImage' && s.downloadImage === true);
+        if (wantsImages && typeof DownloadManager !== 'undefined') {
+          await openGallery();
+          startGalleryDownloads();
+        } else {
+          openBrowseData();
+        }
+      }
     });
 
     // Start timer loop
@@ -1967,6 +1994,10 @@
     const time = new Date().toLocaleTimeString();
     const line = `[${time}] ${msg}`;
     scrapeLogHistory.push(`${level.toUpperCase().padEnd(7)} ${line}`);
+    if (scrapeLogHistory.length > LOG_HISTORY_MAX_LINES) {
+      const dropped = scrapeLogHistory.length - LOG_HISTORY_MAX_LINES;
+      scrapeLogHistory.splice(0, dropped);
+    }
 
     const entry = document.createElement('div');
     entry.className = `log-entry log-${level}`;
@@ -2386,6 +2417,14 @@
 
   async function openBrowseData() {
     if (!state.currentSitemap) return;
+    // Stale per-column filters / sort of a previous sitemap hid every row of
+    // a freshly opened one ("no data" with thousands of records stored).
+    if (state.browseDataSitemapId !== state.currentSitemap._id) {
+      state.browseDataSitemapId = state.currentSitemap._id;
+      state.dataColumnFilters = {};
+      state.dataSort = [];
+      elements.searchDataInput.value = '';
+    }
     try {
       state.scrapedData = await AppStorage.getScrapedData(state.currentSitemap._id);
     } catch (e) {
@@ -2468,11 +2507,20 @@
         .map((r) => toSortableNumber(r[h]))
         .filter((n) => n !== null);
       if (!nums.length) continue;
-      const sum = nums.reduce((acc, n) => acc + n, 0);
+      // Plain loops — Math.min(...nums) spreads every value as an argument
+      // and blows the call stack (RangeError) on large datasets.
+      let min = nums[0];
+      let max = nums[0];
+      let sum = 0;
+      for (const n of nums) {
+        sum += n;
+        if (n < min) min = n;
+        if (n > max) max = n;
+      }
       parts.push(
         `<span style="margin-right:14px;"><strong style="color:#2dd4bf;">${escapeHtml(h)}</strong> · ` +
         `n=${nums.length} · Σ=${formatStatNumber(sum)} · x̄=${formatStatNumber(sum / nums.length)} · ` +
-        `min=${formatStatNumber(Math.min(...nums))} · max=${formatStatNumber(Math.max(...nums))}</span>`
+        `min=${formatStatNumber(min)} · max=${formatStatNumber(max)}</span>`
       );
     }
     bar.style.display = parts.length ? 'block' : 'none';
@@ -2998,15 +3046,40 @@
     }
     if (!items.length) return;
     const files = [];
-    for (let i = 0; i < items.length; i++) {
-      try {
-        const resp = await fetch(items[i].url);
-        const buf = await resp.arrayBuffer();
-        const ext = (items[i].url.split('?')[0].match(/\.([a-z0-9]+)$/i) || [null, 'jpg'])[1];
-        files.push({ name: 'img-' + String(i + 1).padStart(3, '0') + '.' + ext, data: new Uint8Array(buf) });
-      } catch (e) {}
+    let failed = 0;
+    // Fetch in small batches (4-wide) — sequential awaited fetches made a
+    // large gallery crawl one-by-one over hundreds of roundtrips.
+    const BATCH = 4;
+    for (let start = 0; start < items.length; start += BATCH) {
+      const batch = items.slice(start, start + BATCH);
+      const results = await Promise.all(batch.map(async (item, offset) => {
+        try {
+          const resp = await fetch(item.url);
+          // Without the ok check a 404 error page landed inside the archive
+          // as a "corrupt image" — treat failed responses as skipped files.
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const buf = await resp.arrayBuffer();
+          const ext = (String(item.url).split('?')[0].match(/\.([a-z0-9]+)$/i) || [null, 'jpg'])[1];
+          const index = start + offset;
+          return { name: 'img-' + String(index + 1).padStart(3, '0') + '.' + ext, data: new Uint8Array(buf) };
+        } catch (e) {
+          return null;
+        }
+      }));
+      for (const f of results) {
+        if (f) files.push(f);
+        else failed++;
+      }
     }
-    if (!files.length) return;
+    if (!files.length) {
+      alert(t('zipAllFailed'));
+      return;
+    }
+    if (failed > 0) {
+      // Surface skipped images where the user just clicked ZIP (the scrape
+      // log box is not visible from the gallery view).
+      alert(t('zipPartialFail', { failed, total: items.length }));
+    }
     const zipBytes = await SimpleZip.build(files);
     const blob = new Blob([zipBytes], { type: 'application/zip' });
     const objectUrl = URL.createObjectURL(blob);

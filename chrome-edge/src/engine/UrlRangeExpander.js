@@ -28,7 +28,6 @@
     // Find all brackets [...]
     const regex = /\[([^\[\]]+)\]/g;
     let match;
-    const parts = [];
     let lastIndex = 0;
 
     const ranges = [];

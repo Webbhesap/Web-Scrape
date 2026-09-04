@@ -218,6 +218,28 @@
       this.updatedAt = new Date().toISOString();
     }
 
+    /**
+     * Renames a selector in place, keeping the hierarchy intact: every child
+     * that references `oldId` in its parentSelectors is re-pointed to `newId`.
+     * Returns false when the selector does not exist or `newId` already
+     * belongs to another selector (the caller must surface that error — a
+     * silent overwrite would destroy the other selector's configuration).
+     */
+    renameSelector(oldId, newId) {
+      if (!oldId || !newId || oldId === newId) return oldId === newId;
+      const sel = this.getSelectorById(oldId);
+      if (!sel) return false;
+      if (this.getSelectorById(newId)) return false;
+
+      sel.id = newId;
+      this.selectors.forEach(s => {
+        if (s === sel) return;
+        s.parentSelectors = s.parentSelectors.map(pId => (pId === oldId ? newId : pId));
+      });
+      this.updatedAt = new Date().toISOString();
+      return true;
+    }
+
     toJSON() {
       return {
         _id: this._id,
@@ -263,11 +285,11 @@
             : ['_root']
         };
         // Known type-specific fields (webscraper.io uses the same names);
-        // anything else — e.g. clickElementUniquenessType — is ignored.
+        // unknown extras are dropped so they never leak into storage.
         for (const key of [
           'linkType', 'downloadImage', 'tableHeaderRowSelector', 'tableDataRowSelector', 'columns',
           'extractAttribute', 'outerHTML', 'delimiter', 'paginationType', 'maxPages',
-          'clickElementSelector', 'clickType', 'clickDelay', 'discardInitialElements',
+          'clickElementSelector', 'clickType', 'clickElementUniquenessType', 'clickDelay', 'discardInitialElements',
           'scrollElementSelector', 'scrollDelay', 'maxScrolls'
         ]) {
           if (sel[key] !== undefined) clean[key] = sel[key];
@@ -297,6 +319,11 @@
 
     static slugify(str) {
       return slugifyId(str);
+    }
+
+    /** Shared URL normalization (used by the constructor AND the dashboard). */
+    static normalizeUrl(url) {
+      return normalizeUrl(url);
     }
   }
 

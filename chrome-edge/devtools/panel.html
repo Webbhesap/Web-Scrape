@@ -786,7 +786,7 @@
             <span class="badge" id="gallery-selected-badge" style="display:none; background:rgba(45,212,191,0.2); color:#2dd4bf;"></span>
             <button class="btn btn-secondary btn-sm" id="btn-gallery-zip-all" data-i18n="downloadZip">Download ZIP</button>
             <button class="btn btn-secondary btn-sm" id="btn-gallery-zip-selected" data-i18n="downloadSelected">ZIP selected</button>
-            <button class="btn btn-primary btn-sm" id="btn-gallery-download-all" data-i18n="downloadImages">Download images</button>
+            <button class="btn btn-primary btn-sm" id="btn-gallery-download-all" data-i18n="downloadImagesAll">Download images</button>
           </div>
         </div>
         <div id="gallery-dm-panel" style="display:none; padding: 10px 14px; border-bottom: 1px solid rgba(148,163,184,0.15);">
@@ -952,6 +952,10 @@
   <script src="../lib/csv.js"></script>
   <script src="../lib/xlsx.js"></script>
   <script src="../lib/icons.js"></script>
+  <!-- transforms.js MUST load before src/engine/SelectorEngine.js: the engine
+       factory captures the global TextTransforms at script-eval time, and a
+       late load would freeze an `undefined` reference into postProcess(). -->
+  <script src="../lib/transforms.js"></script>
   <script src="../src/engine/UrlRangeExpander.js"></script>
   <script src="../src/models/Selector.js"></script>
   <script src="../src/models/Sitemap.js"></script>
@@ -963,7 +967,6 @@
   <script src="../src/export/Exporter.js"></script>
   <script src="../src/ui/SelectorGraph.js"></script>
   <script src="../lib/i18n.js"></script>
-  <script src="../lib/transforms.js"></script>
   <script src="../lib/datamode.js"></script>
   <script src="../lib/undo_stack.js"></script>
 <script src="../lib/sitemap_templates.js"></script>

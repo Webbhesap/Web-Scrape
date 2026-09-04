@@ -394,38 +394,57 @@
 
           for (const itemElement of elements) {
             const itemRecord = Object.assign({}, job.parentData);
-            let hasChildLink = false;
-            let hasChildTable = false;
 
-            // First pass: extract non-link data fields and check for child links/tables
+            // Pass 1: extract every plain data field first. Links, tables and
+            // nested containers are deferred so the records they produce
+            // always inherit the FULL sibling record regardless of the order
+            // the selectors happen to be defined in (previously a link
+            // declared before the text fields passed an incomplete parent
+            // record to the child pages — order-dependent data loss).
+            const childLinks = [];
+            const childTables = [];
+            const childContainers = [];
             for (const fieldSel of childFields) {
               if (fieldSel.type === 'SelectorLink' || fieldSel.type === 'SelectorPopupLink') {
-                hasChildLink = true;
-                this.enqueueLinks(itemElement, fieldSel, job, itemRecord);
+                childLinks.push(fieldSel);
               } else if (fieldSel.type === 'SelectorTable') {
-                hasChildTable = true;
-                const tableRows = this.selectorEngine.extractTable(itemElement, fieldSel);
-                for (const tRow of tableRows) {
-                  this.pushLeafRecord(Object.assign({}, itemRecord, tRow), job, currentUrl);
-                }
+                childTables.push(fieldSel);
               } else if (fieldSel.type === 'SelectorElement') {
-                // Nested element containers
-                const subElements = this.selectorEngine.extractElement(itemElement, fieldSel);
-                const subChildFields = this.sitemap.getDirectChildSelectors(fieldSel.id);
-                for (const subEl of subElements) {
-                  const subRecord = Object.assign({}, itemRecord);
-                  for (const subSel of subChildFields) {
-                    subRecord[subSel.id] = this.selectorEngine.extract(subEl, subSel);
-                  }
-                  this.pushLeafRecord(subRecord, job, currentUrl);
-                }
+                childContainers.push(fieldSel);
               } else {
                 itemRecord[fieldSel.id] = this.selectorEngine.extract(itemElement, fieldSel);
               }
             }
 
-            // If this item container is not forwarded to child links or expanded by tables/nested containers, emit leaf record
-            if (!hasChildLink && !hasChildTable && !childFields.some(f => f.type === 'SelectorElement')) {
+            // Pass 2: tables — each expanded row carries the full item record.
+            for (const tableSel of childTables) {
+              const tableRows = this.selectorEngine.extractTable(itemElement, tableSel);
+              for (const tRow of tableRows) {
+                this.pushLeafRecord(Object.assign({}, itemRecord, tRow), job, currentUrl);
+              }
+            }
+
+            // Pass 3: nested element containers.
+            for (const nestedSel of childContainers) {
+              const subElements = this.selectorEngine.extractElement(itemElement, nestedSel);
+              const subChildFields = this.sitemap.getDirectChildSelectors(nestedSel.id);
+              for (const subEl of subElements) {
+                const subRecord = Object.assign({}, itemRecord);
+                for (const subSel of subChildFields) {
+                  subRecord[subSel.id] = this.selectorEngine.extract(subEl, subSel);
+                }
+                this.pushLeafRecord(subRecord, job, currentUrl);
+              }
+            }
+
+            // Pass 4: links — enqueue child pages with the complete record.
+            for (const linkSel of childLinks) {
+              this.enqueueLinks(itemElement, linkSel, job, itemRecord);
+            }
+
+            // If this item container was not forwarded to child links or
+            // expanded by tables/nested containers, emit it as a leaf record.
+            if (childLinks.length === 0 && childTables.length === 0 && childContainers.length === 0) {
               this.pushLeafRecord(itemRecord, job, currentUrl);
             }
           }

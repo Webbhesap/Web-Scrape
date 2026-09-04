@@ -40,14 +40,18 @@
 
   function getElementVisibleText(element) {
     if (!element) return '';
+    // Fast path: cloning the whole subtree per field × per item is one of the
+    // most expensive operations of a crawl. Only worth it when the element
+    // actually contains nodes we would strip or rewrite.
+    if (!element.querySelector || !element.querySelector('script, style, noscript, svg, br')) {
+      return cleanText(element.textContent || element.innerText || '');
+    }
     // Clone to safely remove script/style
     const clone = element.cloneNode(true);
-    const scripts = clone.querySelectorAll('script, style, noscript, svg');
-    scripts.forEach(s => s.remove());
-    
+    clone.querySelectorAll('script, style, noscript, svg').forEach(s => s.remove());
+
     // Replace <br> and block elements with newlines for proper spacing
-    const brs = clone.querySelectorAll('br');
-    brs.forEach(br => br.replaceWith('\n'));
+    clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
 
     return cleanText(clone.textContent || clone.innerText || '');
   }
@@ -216,12 +220,18 @@
         // deeper roots need to be visited.
         const shadowRoots = this.collectShadowRoots(context);
         if (shadowRoots.length === 0) return direct;
+        // Set-based membership keeps the merge O(n) — `out.includes(el)`
+        // turned quadratic on pages with many shadow-DOM matches.
         const out = direct.slice();
+        const seen = new Set(out);
         for (const root of shadowRoots) {
           let matched = [];
           try { matched = Array.from(root.querySelectorAll(selectorStr)); } catch (e) { continue; }
           for (const el of matched) {
-            if (!out.includes(el)) out.push(el);
+            if (!seen.has(el)) {
+              seen.add(el);
+              out.push(el);
+            }
           }
         }
         return out;
@@ -306,36 +316,35 @@
       }
     }
 
+    /** Resolves the href for one link element according to linkType. */
+    linkHrefFor(el, linkType) {
+      if (linkType === 'linkFromText') {
+        return resolveUrl(cleanText(el.textContent), this.baseUrl);
+      }
+      if (linkType === 'linkFromAttribute') {
+        return resolveUrl(el.getAttribute('data-href') || el.getAttribute('href') || '', this.baseUrl);
+      }
+      if (linkType === 'linkFromScript') {
+        // Links rendered by JS handlers: window.open('…') / data-url attrs.
+        // Falls back to the plain href so mixed markup still resolves.
+        const scripted = extractPopupUrl(el, this.baseUrl);
+        return scripted || resolveUrl(el.getAttribute('href') || '', this.baseUrl);
+      }
+      return resolveUrl(el.getAttribute('href') || el.getAttribute('data-href') || '', this.baseUrl);
+    }
+
     extractLink(context, selector) {
       if (selector.multiple) {
         const elements = this.queryAll(context, selector.selector);
-        return elements.map(el => {
-          let href = '';
-          if (selector.linkType === 'linkFromText') {
-            href = resolveUrl(cleanText(el.textContent), this.baseUrl);
-          } else if (selector.linkType === 'linkFromAttribute') {
-            href = resolveUrl(el.getAttribute('data-href') || el.getAttribute('href') || '', this.baseUrl);
-          } else {
-            href = resolveUrl(el.getAttribute('href') || el.getAttribute('data-href') || '', this.baseUrl);
-          }
-          return {
-            href: href,
-            text: postProcess(cleanText(el.textContent), selector)
-          };
-        });
+        return elements.map(el => ({
+          href: this.linkHrefFor(el, selector.linkType),
+          text: postProcess(cleanText(el.textContent), selector)
+        }));
       } else {
         const el = this.queryFirst(context, selector.selector);
         if (!el) return postProcess({ href: '', text: '' }, selector);
-        let href = '';
-        if (selector.linkType === 'linkFromText') {
-          href = resolveUrl(cleanText(el.textContent), this.baseUrl);
-        } else if (selector.linkType === 'linkFromAttribute') {
-          href = resolveUrl(el.getAttribute('data-href') || el.getAttribute('href') || '', this.baseUrl);
-        } else {
-          href = resolveUrl(el.getAttribute('href') || el.getAttribute('data-href') || '', this.baseUrl);
-        }
         return {
-          href: href,
+          href: this.linkHrefFor(el, selector.linkType),
           text: postProcess(cleanText(el.textContent), selector)
         };
       }

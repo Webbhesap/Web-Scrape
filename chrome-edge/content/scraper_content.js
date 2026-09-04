@@ -10,26 +10,17 @@
   }
   window.__webScraperContentLoaded = true;
 
-  function cleanText(text) {
-    if (!text) return '';
-    return String(text).replace(/\r\n|\r/g, '\n').replace(/[ \t]+/g, ' ').trim();
-  }
-
-  function resolveUrl(href) {
-    if (!href) return '';
-    try {
-      return new URL(href, window.location.href).href;
-    } catch (e) {
-      return href;
-    }
-  }
-
   async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
   }
 
   async function handleClickSelector(selectorConfig) {
     const clickSelector = selectorConfig.clickElementSelector;
+    if (!clickSelector) {
+      // Empty click selector: querySelectorAll('') would throw a SyntaxError
+      // on every page of the crawl — treat it as "no clicks to perform".
+      return { clicksDone: 0 };
+    }
     const clickType = selectorConfig.clickType || 'clickMore';
     const clickDelay = selectorConfig.clickDelay || 1000;
     // Hard safety cap: the dashboard can lower it per selector, but never

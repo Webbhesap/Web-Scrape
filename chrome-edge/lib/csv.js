@@ -16,7 +16,6 @@
   function unparse(data, options) {
     options = options || {};
     const delimiter = options.delimiter || ',';
-    const quotes = options.quotes !== false; // default true if needed
     const quoteChar = options.quoteChar || '"';
     const escapeChar = options.escapeChar || '"';
     const newline = options.newline || '\r\n';

@@ -57,11 +57,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "content/*",
-        "lib/*",
-        "icons/*",
-        "dashboard/*",
-        "devtools/*"
+        "content/*"
       ],
       "matches": [
         "<all_urls>"
