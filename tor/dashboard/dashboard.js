@@ -25,7 +25,11 @@
       pageSize: 25,
       sortCol: null,
       sortAsc: true
-    }
+    },
+    // Ö5: multi-column sort [{col, asc}], per-column filters, hidden columns
+    dataSort: [],
+    dataColumnFilters: {},
+    dataHiddenCols: []
   };
 
   // DOM Elements Cache
@@ -1883,10 +1887,31 @@
 
   // DATA VIEWER & EXPORT CONTROLLER
   function bindDataViewerEvents() {
+    loadHiddenColumns();
+
     elements.searchDataInput.addEventListener('input', () => {
       state.dataPagination.page = 1;
       filterAndRenderDataTable();
     });
+
+    // Ö5: column visibility popover
+    const btnCols = document.getElementById('btn-data-columns');
+    if (btnCols) {
+      btnCols.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pop = document.getElementById('data-columns-popover');
+        if (!pop) return;
+        const show = pop.style.display !== 'block';
+        pop.style.display = show ? 'block' : 'none';
+        if (show && state.filteredData.length) {
+          renderColumnsPopover(Object.keys(state.filteredData[0]));
+        }
+      });
+      document.addEventListener('click', () => {
+        const pop = document.getElementById('data-columns-popover');
+        if (pop) pop.style.display = 'none';
+      });
+    }
 
     document.getElementById('btn-refresh-data').addEventListener('click', () => openBrowseData());
 
@@ -2095,7 +2120,15 @@
         // Copy the currently filtered view so search results can be copied too.
         const rows = state.filteredData.length ? state.filteredData : state.scrapedData;
         if (!rows.length) return;
-        const csv = Exporter.toCSV(rows, { bom: false });
+        // Ö5: respect the column visibility selection.
+        const visibleRows = rows.map((row) => {
+          const out = {};
+          for (const key of Object.keys(row)) {
+            if (!state.dataHiddenCols.includes(key)) out[key] = row[key];
+          }
+          return out;
+        });
+        const csv = Exporter.toCSV(visibleRows, { bom: false });
         try {
           await navigator.clipboard.writeText(csv);
           alert(t('copiedCsv', { n: rows.length }));
@@ -2119,30 +2152,152 @@
     switchView('browse-data');
   }
 
+  /** True when at least 80% of non-empty values in the column are numbers. */
+  function isNumericColumn(rows, col) {
+    let numbers = 0;
+    let total = 0;
+    for (const row of rows) {
+      const v = row[col];
+      if (v === undefined || v === null || v === '') continue;
+      total++;
+      if (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.trim().replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, ''))))) {
+        numbers++;
+      }
+    }
+    return total > 0 && (numbers / total) >= 0.8;
+  }
+
+  function toSortableNumber(v) {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const cleaned = v.trim().replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.');
+      if (cleaned !== '' && /^-?\d+(\.\d+)?$/.test(cleaned)) return Number(cleaned);
+    }
+    return null;
+  }
+
+  /** Loads/saves the hidden-column selection for the browser session. */
+  function loadHiddenColumns() {
+    try {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem) {
+        const raw = sessionStorage.getItem('ws_hidden_cols');
+        if (raw) state.dataHiddenCols = JSON.parse(raw) || [];
+      }
+    } catch (e) { state.dataHiddenCols = []; }
+  }
+
+  function saveHiddenColumns() {
+    try {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.setItem) {
+        sessionStorage.setItem('ws_hidden_cols', JSON.stringify(state.dataHiddenCols));
+      }
+    } catch (e) { /* private mode etc. */ }
+  }
+
+  function applyDataSort(rows) {
+    if (!state.dataSort.length) return;
+    const sorts = state.dataSort.slice();
+    rows.sort((a, b) => {
+      for (const { col, asc } of sorts) {
+        const vA = a[col] !== undefined && a[col] !== null ? a[col] : '';
+        const vB = b[col] !== undefined && b[col] !== null ? b[col] : '';
+        const nA = toSortableNumber(vA);
+        const nB = toSortableNumber(vB);
+        let cmp;
+        if (nA !== null && nB !== null) cmp = nA - nB;
+        else cmp = String(vA).localeCompare(String(vB), undefined, { numeric: true, sensitivity: 'base' });
+        if (cmp !== 0) return asc ? cmp : -cmp;
+      }
+      return 0;
+    });
+  }
+
+  function renderDataStatsBar(headers) {
+    const bar = document.getElementById('data-stats-bar');
+    if (!bar) return;
+    const parts = [];
+    for (const h of headers) {
+      if (state.dataHiddenCols.includes(h)) continue;
+      if (!isNumericColumn(state.filteredData, h)) continue;
+      const nums = state.filteredData
+        .map((r) => toSortableNumber(r[h]))
+        .filter((n) => n !== null);
+      if (!nums.length) continue;
+      const sum = nums.reduce((acc, n) => acc + n, 0);
+      parts.push(
+        `<span style="margin-right:14px;"><strong style="color:#2dd4bf;">${escapeHtml(h)}</strong> · ` +
+        `n=${nums.length} · Σ=${formatStatNumber(sum)} · x̄=${formatStatNumber(sum / nums.length)} · ` +
+        `min=${formatStatNumber(Math.min(...nums))} · max=${formatStatNumber(Math.max(...nums))}</span>`
+      );
+    }
+    bar.style.display = parts.length ? 'block' : 'none';
+    bar.innerHTML = parts.length
+      ? parts.join('')
+      : '';
+  }
+
+  function formatStatNumber(n) {
+    if (!Number.isFinite(n)) return String(n);
+    const abs = Math.abs(n);
+    if (abs >= 1000) return Math.round(n).toLocaleString('en-US');
+    return Math.round(n * 100) / 100;
+  }
+
+  /** Escapes a string for use inside a CSS attribute selector. */
+  function cssAttrEscape(value) {
+    return String(value).replace(/(["\\])/g, '\\$1');
+  }
+
+  function renderColumnsPopover(headers) {
+    const pop = document.getElementById('data-columns-popover');
+    if (!pop) return;
+    pop.innerHTML = '';
+    headers.forEach((h) => {
+      const label = document.createElement('label');
+      label.className = 'form-checkbox-label';
+      label.style.display = 'flex';
+      label.style.marginBottom = '4px';
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = !state.dataHiddenCols.includes(h);
+      chk.addEventListener('change', () => {
+        if (chk.checked) {
+          state.dataHiddenCols = state.dataHiddenCols.filter((c) => c !== h);
+        } else {
+          state.dataHiddenCols.push(h);
+        }
+        saveHiddenColumns();
+        renderDataTablePage();
+        renderColumnsPopover(headers);
+      });
+      const span = document.createElement('span');
+      span.textContent = h;
+      span.style.fontSize = '12px';
+      label.appendChild(chk);
+      label.appendChild(span);
+      pop.appendChild(label);
+    });
+  }
+
   function filterAndRenderDataTable() {
     const query = (elements.searchDataInput.value || '').toLowerCase().trim();
 
-    if (!query) {
-      state.filteredData = [...state.scrapedData];
-    } else {
-      state.filteredData = state.scrapedData.filter(row => {
-        return Object.values(row).some(val => String(val).toLowerCase().includes(query));
-      });
-    }
-
-    // Sort if column set
-    if (state.dataPagination.sortCol) {
-      const col = state.dataPagination.sortCol;
-      const asc = state.dataPagination.sortAsc;
-      state.filteredData.sort((a, b) => {
-        const vA = a[col] !== undefined ? a[col] : '';
-        const vB = b[col] !== undefined ? b[col] : '';
-        if (typeof vA === 'number' && typeof vB === 'number') {
-          return asc ? vA - vB : vB - vA;
+    state.filteredData = state.scrapedData.filter(row => {
+      if (query && !Object.values(row).some(val => String(val).toLowerCase().includes(query))) {
+        return false;
+      }
+      // Ö5: per-column filters (AND-ed on top of the global search)
+      for (const [col, needle] of Object.entries(state.dataColumnFilters)) {
+        if (!needle) continue;
+        const v = row[col];
+        if (!String(v === undefined || v === null ? '' : v).toLowerCase().includes(String(needle).toLowerCase())) {
+          return false;
         }
-        return asc ? String(vA).localeCompare(String(vB)) : String(vB).localeCompare(String(vA));
-      });
-    }
+      }
+      return true;
+    });
+
+    applyDataSort(state.filteredData);
 
     elements.browseRecordCountBadge.textContent = t('nRecords', { n: state.scrapedData.length });
     renderDataTablePage();
@@ -2171,23 +2326,42 @@
       return;
     }
 
-    const headers = Object.keys(state.filteredData[0]);
+    const allHeaders = Object.keys(state.filteredData[0]);
+    const headers = allHeaders.filter((h) => !state.dataHiddenCols.includes(h));
+
+    renderDataStatsBar(allHeaders);
 
     // Render Table Header
     const trHead = document.createElement('tr');
     headers.forEach(h => {
       const th = document.createElement('th');
       th.className = 'sortable';
-      th.textContent = h;
-      if (state.dataPagination.sortCol === h) {
-        th.textContent += state.dataPagination.sortAsc ? ' ▲' : ' ▼';
-      }
-      th.addEventListener('click', () => {
-        if (state.dataPagination.sortCol === h) {
-          state.dataPagination.sortAsc = !state.dataPagination.sortAsc;
+      const sortIdx = state.dataSort.findIndex((x) => x.col === h);
+      th.textContent = h + (sortIdx >= 0 ? ` ${state.dataSort[sortIdx].asc ? '▲' : '▼'}${state.dataSort.length > 1 ? sortIdx + 1 : ''}` : '');
+      th.title = t('sortHint');
+      th.addEventListener('click', (e) => {
+        // Ö5: click replaces the sort; Shift+click stacks a secondary sort.
+        if (e.shiftKey) {
+          const existing = state.dataSort.find((x) => x.col === h);
+          if (existing) {
+            existing.asc = !existing.asc;
+          } else {
+            state.dataSort.push({ col: h, asc: true });
+          }
         } else {
-          state.dataPagination.sortCol = h;
-          state.dataPagination.sortAsc = true;
+          const current = state.dataSort.length === 1 && state.dataSort[0].col === h
+            ? state.dataSort[0]
+            : null;
+          state.dataSort = current
+            ? [{ col: h, asc: !current.asc }]
+            : [{ col: h, asc: true }];
+        }
+        // Keep the legacy single-sort fields in sync for other callers.
+        if (state.dataSort.length) {
+          state.dataPagination.sortCol = state.dataSort[0].col;
+          state.dataPagination.sortAsc = state.dataSort[0].asc;
+        } else {
+          state.dataPagination.sortCol = null;
         }
         filterAndRenderDataTable();
       });
@@ -2198,6 +2372,30 @@
     thActions.style.width = '40px';
     trHead.appendChild(thActions);
     elements.theadScrapedData.appendChild(trHead);
+
+    // Ö5: per-column filter row
+    const trFilter = document.createElement('tr');
+    headers.forEach(h => {
+      const th = document.createElement('th');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'form-control';
+      input.style.minWidth = '70px';
+      input.placeholder = t('filterCol');
+      input.value = state.dataColumnFilters[h] || '';
+      input.addEventListener('input', () => {
+        state.dataColumnFilters[h] = input.value;
+        state.dataPagination.page = 1;
+        filterAndRenderDataTable();
+        const again = elements.theadScrapedData.querySelector(`[data-col-filter="${cssAttrEscape(h)}"]`);
+        if (again) again.focus();
+      });
+      input.setAttribute('data-col-filter', h);
+      th.appendChild(input);
+      trFilter.appendChild(th);
+    });
+    trFilter.appendChild(document.createElement('th'));
+    elements.theadScrapedData.appendChild(trFilter);
 
     // Paginate rows
     const pageSize = state.dataPagination.pageSize;

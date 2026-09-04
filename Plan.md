@@ -239,7 +239,7 @@ Her adımdan sonra: `npm test` (tümü yeşil olmalı), `node tools/build_tor.js
 - [x] Ö2 Gölge DOM desteği
 - [x] Ö3 Yeniden deneme / maksimum derinlik / URL desenleri
 - [x] Ö4 Artımlı kazıma (append/merge/replace)
-- [ ] Ö5 Sütun filtreleri, istatistikler, çoklu sıralama, sütun görünürlüğü
+- [x] Ö5 Sütun filtreleri, istatistikler, çoklu sıralama, sütun görünürlüğü
 - [ ] Ö6 Gerçek XLSX + panoya zengin tablo
 - [ ] Ö7 Galeri indirme yöneticisi
 - [ ] Ö8 Site haritası şablonları

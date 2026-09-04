@@ -665,6 +665,13 @@
           </div>
           <div style="display:flex; gap:8px;">
             <input type="text" id="search-data-input" class="form-control" placeholder="Search data..." data-i18n-placeholder="searchData" style="width:200px; padding:4px 8px; font-size:12px;">
+            <div style="position:relative;">
+              <button class="btn btn-secondary btn-sm" id="btn-data-columns">
+                <span class="icon-layers"></span>
+                <span data-i18n="columnsLabel">Columns</span>
+              </button>
+              <div id="data-columns-popover" style="display:none; position:absolute; right:0; top:110%; z-index:60; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:10px; min-width:180px; max-height:260px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.45);"></div>
+            </div>
             <button class="btn btn-secondary btn-sm" id="btn-toggle-find-replace">
               <span data-i18n="findReplace">Find / Replace</span>
             </button>
@@ -711,6 +718,7 @@
           <button type="button" class="btn btn-primary btn-sm" id="btn-replace-all" data-i18n="replaceAll">Replace all</button>
           <span id="find-replace-status" style="font-size:11px;color:var(--text-muted);"></span>
         </div>
+        <div id="data-stats-bar" style="display:none; margin:8px 0; padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; background:rgba(45,212,191,0.05); font-size:11px; color:var(--text-muted);"></div>
         <div class="table-container browse-table-scroll">
           <table class="table" id="table-scraped-data">
             <thead id="thead-scraped-data">
