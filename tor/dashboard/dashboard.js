@@ -233,6 +233,7 @@
 
     document.querySelectorAll('.icon-chevron-down').forEach(el => el.innerHTML = AppIcons.get('chevronDown'));
     document.querySelectorAll('.icon-chevron-right').forEach(el => el.innerHTML = AppIcons.get('chevronRight'));
+    document.querySelectorAll('.icon-x').forEach(el => el.innerHTML = AppIcons.get('x'));
     document.querySelectorAll('.icon-folder').forEach(el => el.innerHTML = AppIcons.get('folder'));
     document.querySelectorAll('.icon-plus').forEach(el => el.innerHTML = AppIcons.get('plus'));
     document.querySelectorAll('.icon-upload').forEach(el => el.innerHTML = AppIcons.get('upload'));
@@ -2163,6 +2164,7 @@
     function openHelpDialog() {
       const help = document.getElementById('help-overlay');
       if (!help) return;
+      help.__wsLastFocus = document.activeElement;
       help.hidden = false;
       const closeBtn = document.getElementById('btn-help-close');
       if (closeBtn) closeBtn.focus();
@@ -2170,7 +2172,13 @@
 
     function closeHelpDialog() {
       const help = document.getElementById('help-overlay');
-      if (help) help.hidden = true;
+      if (!help || help.hidden) return;
+      help.hidden = true;
+      // Return focus to whatever was focused before the dialog opened.
+      const prev = help.__wsLastFocus;
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        prev.focus();
+      }
     }
 
     const btnHelpClose = document.getElementById('btn-help-close');

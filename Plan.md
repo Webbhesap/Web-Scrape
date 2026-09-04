@@ -15,7 +15,7 @@
 | Chrome/Edge/Brave kaynağı | `chrome-edge/` | Tek gerçek kaynak ağacı (elle düzenlenen tek yer) |
 | Firefox/Tor derlemesi | `tor/` | `npm run build:tor` ile otomatik üretilir (elle düzenlenmez) |
 | DevTools paneli | `chrome-edge/devtools/panel.html` | `npm run build:panel` ile dashboard'dan üretilir |
-| Testler | `test/` | Node.js test runner + jsdom (`npm test`, 211 test) |
+| Testler | `test/` | Node.js test runner + jsdom (`npm test`, 215 test) |
 | Derleme araçları | `tools/` | panel/tor üretimi ve `--check` CI denetimleri |
 
 Mimari: AMD/CommonJS/browser global üçlüsüyle paketlenmiş UMD modüller;
@@ -253,11 +253,14 @@ dosya denetimi; `npm run check:tor` CI kapısı.
   üretsin (elle kontrol yerine).
 
 ### 2.16 Test Altyapısı — `test/`
-**Şu an:** 211 test (unit/integration/UI/E2E), jsdom tabanlı; üretilen
+**Şu an:** 215 test (unit/integration/UI/E2E), jsdom tabanlı; üretilen
 dosyaların senkronu (panel/tor) CI ile doğrulanıyor. Bu turda eklenen
 regresyon testleri: gerçek HTML script sırası + tarayıcı-bağlamı duman testi,
 i18n çift-anahtar denetimi, `renameSelector`, alan-mirası sırası bağımsızlığı,
-`linkFromScript`, galeri ZIP'te başarısız indirme atlama.
+`linkFromScript`, galeri ZIP'te başarısız indirme atlama; yardım diyaloğu
+için dashboard.css'i gerçek `<style>` olarak enjekte edip GÖRÜNÜRLÜĞÜ
+(kaskad) doğrulayan testler — `hidden` özelliğinin CSS'i yenemediği sınıfı
+bug'ları artık kaçmıyor.
 
 **Geliştirme:**
 - `node --test --experimental-coverage` ile kapsam eşiği (ör. engine ≥ %90)
@@ -294,6 +297,32 @@ i18n çift-anahtar denetimi, `renameSelector`, alan-mirası sırası bağımsız
 | 19 | `UrlRangeExpander`'da ölü `parts` dizisi, `SelectorGraph`'ta ölü `visited` seti, `dashboard.js`'te ölü `hasChildren`, `csv.js`'de işlevsiz `quotes` seçeneği, `scraper_content.js`'te kullanılmayan `cleanText`/`resolveUrl` | Kafa karışıklığı / yanlış API izlenimi | Temizlendi veya gerçek davranışa bağlandı |
 | 20 | `normalizeImported`, `clickElementUniquenessType` alanını düşürüyordu | İçe aktarılan Element Click ayarı kayboluyordu | Korunan alan listesine eklendi |
 | 21 | `package.json` `main` alanı service worker'ı gösteriyordu | `require('web-scraper')` çökerdi; anlamsız | `private: true` ile kaldırıldı |
+
+## 3b. İkinci Tur — Klavye Kısayolları Yardım Penceresi
+
+**Kullanıcı raporu:** "Klavye kısayolları penceresi boşluğa tıklayınca veya
+üst kısmındaki kapat butonuna tıklayınca kapanmıyor."
+
+**Kök neden (satır 22):** JS tarafı doğruydu — hem `btn-help-close` hem de
+boşluğa (backdrop) tıklama dinleyicisi `hidden = true` set ediyordu; ancak
+`.help-overlay { display: flex }` yazar stil kuralı, `hidden`
+özniteliğinin tarayıcı varsayılanı `display: none`'ını kaskadda yeniyordu.
+Tıklama sonrası özellik değişiyor ama diyalog ekranda kalıyordu. Aynı
+tuzak slideshow overlay'inde önceden fark edilip `.slideshow-overlay[hidden]
+{ display: none !important }` ile fix'lenmişti; yardım overlay'i gözden
+kaçmıştı. Mevcut testler yalnız `hidden` özelliğine bakıyordu (jsdom
+`<link>` CSS'ini uygulamadığından görünüm hatası testten kaçtı).
+
+| # | Sorun | Etki | Çözüm |
+|---|---|---|---|
+| 22 | `[hidden]`, `.help-overlay`'ın `display:flex`'ini yenemiyordu | Yardım penceresi kapat/boşluğa tık ile KAPANMIYORDU | `[hidden] { display: none !important }` genel kuralı (reset bölgesinde) + `.help-overlay[hidden]` compound kuralı — slideshow kalıbıyla tutarlı |
+| 23 | Kapatma, metin butonuydu (`btn-secondary` "Close") | Köşede ikon beklenir; görsel ağırlık | `AppIcons.get('x')` ile `×` ikonlu `.btn-icon`; erişilebilirlik `aria-label` + `data-i18n-title` (çeviri buton içeriğini ezmesin); Escape ve `?` kısayolları korundu; kapanışta odak tetikleyen öğeye dönüyor |
+
+**Regresyon:** `test/help_dialog.test.js` (4 test) dashboard.css'i jsdom'a
+gerçek `<style>` olarak enjekte edip overlay'in `hidden` iken GÖRÜNMEZ,
+açıkken `flex` olduğunu; tor kopyası senkronunu; ikon butonun erişilebilir
+etiketini ve kapalıyken tıklama güvenliğini kilitliyor. Düzeltme öncesi
+3 testin kırmızı olduğu doğrulandı (kırmızı→yeşil akış).
 
 ---
 

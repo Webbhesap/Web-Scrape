@@ -49,6 +49,15 @@
   padding: 0;
 }
 
+/* The `hidden` attribute must always win. Author rules like
+   `.help-overlay { display: flex }` override the UA-level `[hidden]`
+   declaration (author origin beats UA in the cascade), which left overlays
+   "closing" into an attribute change with no visual effect. A generic
+   `!important` guard fixes the whole class of bugs, not just one overlay. */
+[hidden] {
+  display: none !important;
+}
+
 /* Every element inherits the dark UA scheme, including replaced/native widgets
    rendered inside iframes such as the DevTools panel. */
 html,
@@ -1041,6 +1050,11 @@ tr.selector-row.drop-after td {
   justify-content: center;
   z-index: 9500;
 }
+/* Same guard the slideshow uses: the `hidden` attribute must win over the
+   display:flex above (and be robust in simplified cascade engines). */
+.help-overlay[hidden] {
+  display: none !important;
+}
 
 .help-dialog {
   width: min(560px, calc(100% - 32px));
@@ -1058,6 +1072,33 @@ tr.selector-row.drop-after td {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+}
+
+/* Compact icon-only button for dialog closers (× symbol as inline SVG). */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.btn-icon:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+  color: #f8fafc;
+}
+.btn-icon:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--primary-glow);
 }
 
 .help-table {
