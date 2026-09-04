@@ -49,6 +49,7 @@ test('UI Integration - Dashboard HTML loads, parses scripts and initializes clea
 
   const scriptFiles = [
     '../lib/csv.js',
+    '../lib/sitemap_templates.js',
     '../lib/xlsx.js',
     '../lib/icons.js',
     '../src/engine/UrlRangeExpander.js',

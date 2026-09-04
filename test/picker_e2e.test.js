@@ -33,7 +33,7 @@ const DASHBOARD_SCRIPTS = [
   'src/engine/CssSelectorGenerator.js', 'src/engine/SelectorEngine.js',
   'src/engine/DataFlattener.js', 'src/engine/ScraperEngine.js',
   'src/storage/Storage.js', 'src/export/Exporter.js', 'src/ui/SelectorGraph.js',
-  'lib/i18n.js', 'lib/zip.js', 'dashboard/dashboard.js'
+  'lib/i18n.js', 'lib/zip.js', 'lib/sitemap_templates.js', 'dashboard/dashboard.js'
 ];
 
 const PAGE_HTML = `<!DOCTYPE html><html><body>

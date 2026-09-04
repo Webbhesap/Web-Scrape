@@ -220,7 +220,7 @@ test('Dashboard - transforms editor round-trip', async () => {
     'src/engine/CssSelectorGenerator.js', 'src/engine/SelectorEngine.js',
     'src/engine/DataFlattener.js', 'src/engine/ScraperEngine.js',
     'src/storage/Storage.js', 'src/export/Exporter.js', 'src/ui/SelectorGraph.js',
-    'lib/i18n.js', 'lib/zip.js', 'dashboard/dashboard.js'
+    'lib/i18n.js', 'lib/zip.js', 'lib/sitemap_templates.js', 'dashboard/dashboard.js'
   ];
   for (const rel of scripts) {
     const el = win.document.createElement('script');

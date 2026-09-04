@@ -390,6 +390,58 @@
       return true;
     }
 
+    // Ö8 — user sitemap templates (small payloads; extension storage or localStorage)
+
+    async loadSitemapTemplates() {
+      await this.initPromise;
+      if (this.isExtensionStorage) {
+        try {
+          const res = await browser.storage.local.get('sitemap_templates');
+          return (res && Array.isArray(res.sitemap_templates)) ? res.sitemap_templates : [];
+        } catch (e) {
+          return [];
+        }
+      }
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('sitemap_templates');
+          const parsed = raw ? JSON.parse(raw) : [];
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          return [];
+        }
+      }
+      return [];
+    }
+
+    async saveSitemapTemplate(template) {
+      const list = await this.loadSitemapTemplates();
+      const idx = list.findIndex((t) => t && t.id === template.id);
+      if (idx >= 0) list[idx] = template;
+      else list.push(template);
+      if (this.isExtensionStorage) {
+        await browser.storage.local.set({ sitemap_templates: list });
+        return true;
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('sitemap_templates', JSON.stringify(list));
+      }
+      return true;
+    }
+
+    async deleteSitemapTemplate(templateId) {
+      const list = await this.loadSitemapTemplates();
+      const next = list.filter((t) => t && t.id !== templateId);
+      if (this.isExtensionStorage) {
+        await browser.storage.local.set({ sitemap_templates: next });
+        return true;
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('sitemap_templates', JSON.stringify(next));
+      }
+      return true;
+    }
+
     async saveScrapedData(sitemapId, records) {
       await this.initPromise;
       const entry = {

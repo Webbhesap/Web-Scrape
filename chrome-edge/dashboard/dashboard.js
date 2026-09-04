@@ -9,6 +9,7 @@
   // Application State
   const state = {
     downloadQueue: null,
+    sitemapTemplates: [],
     currentView: 'sitemaps',
     sitemaps: [],
     currentSitemap: null,
@@ -300,6 +301,7 @@
     document.getElementById('nav-sitemap-export-data').addEventListener('click', () => switchView('export-data'));
     document.getElementById('nav-sitemap-export-json').addEventListener('click', () => openExportSitemap());
     document.getElementById('nav-sitemap-delete').addEventListener('click', () => deleteCurrentSitemap());
+    document.getElementById('nav-sitemap-save-template').addEventListener('click', () => saveCurrentSitemapAsTemplate());
 
     // Search sitemaps
     elements.searchSitemapsInput.addEventListener('input', () => renderSitemapsList());
@@ -1328,6 +1330,10 @@
     elements.formSitemapMeta.reset();
     elements.fieldSitemapId.readOnly = false;
     if (elements.fieldSitemapShadow) elements.fieldSitemapShadow.checked = true;
+    const tplSelect = document.getElementById('field-sitemap-template');
+    if (tplSelect) tplSelect.value = '';
+    const tplGroup = document.getElementById('sitemap-template-group');
+    if (tplGroup) tplGroup.style.display = '';
     updateUrlRangePreview();
     switchView('sitemap-meta');
   }
@@ -1346,6 +1352,8 @@
     if (elements.fieldSitemapShadow) {
       elements.fieldSitemapShadow.checked = !(state.currentSitemap.options && state.currentSitemap.options.shadowDom === false);
     }
+    const tplGroupEdit = document.getElementById('sitemap-template-group');
+    if (tplGroupEdit) tplGroupEdit.style.display = 'none';
     updateUrlRangePreview();
     switchView('sitemap-meta');
   }
@@ -1394,11 +1402,19 @@
         await AppStorage.saveSitemap(state.currentSitemap);
       } else {
         // Creating new sitemap
+        let templateSelectors = [];
+        const tplValue = (document.getElementById('field-sitemap-template') || {}).value || '';
+        if (tplValue && SitemapTemplates.getBuiltin(tplValue)) {
+          templateSelectors = SitemapTemplates.buildSitemap(tplValue, rawName, urls).selectors;
+        } else if (tplValue && Array.isArray(state.sitemapTemplates)) {
+          const userTpl = state.sitemapTemplates.find((t) => t && t.id === tplValue);
+          if (userTpl && userTpl.sitemap) templateSelectors = JSON.parse(JSON.stringify(userTpl.sitemap.selectors || []));
+        }
         const newSitemap = new Sitemap({
           _id: rawName,
           name: rawName,
           startUrl: urls,
-          selectors: [],
+          selectors: templateSelectors,
           options: {
             shadowDom: !(elements.fieldSitemapShadow && elements.fieldSitemapShadow.checked === false)
           }
@@ -1418,6 +1434,54 @@
       openSitemap(state.currentSitemap._id, 'selectors');
     } catch (err) {
       showSitemapError(t('saveSitemapErr', { msg: err.message || err }));
+    }
+  }
+
+  // Ö8 — sitemap templates ---------------------------------------------------
+  async function populateTemplateSelect() {
+    const select = document.getElementById('field-sitemap-template');
+    if (!select) return;
+    const builtinGroup = document.getElementById('optgroup-builtin-templates');
+    const userGroup = document.getElementById('optgroup-user-templates');
+    if (builtinGroup) builtinGroup.label = t('templateBuiltinGroup');
+    if (userGroup) userGroup.label = t('templateUserGroup');
+
+    // (re)build built-in options
+    while (builtinGroup && builtinGroup.firstChild) builtinGroup.removeChild(builtinGroup.firstChild);
+    SitemapTemplates.listBuiltin().forEach((tpl) => {
+      const opt = document.createElement('option');
+      opt.value = tpl.id;
+      opt.textContent = t(tpl.nameKey);
+      if (builtinGroup) builtinGroup.appendChild(opt);
+    });
+
+    // user templates
+    try {
+      state.sitemapTemplates = await AppStorage.loadSitemapTemplates();
+    } catch (e) {
+      state.sitemapTemplates = [];
+    }
+    while (userGroup && userGroup.firstChild) userGroup.removeChild(userGroup.firstChild);
+    (state.sitemapTemplates || []).forEach((tpl) => {
+      const opt = document.createElement('option');
+      opt.value = tpl.id;
+      opt.textContent = tpl.name;
+      if (userGroup) userGroup.appendChild(opt);
+    });
+    if (userGroup) userGroup.hidden = !(state.sitemapTemplates || []).length;
+  }
+
+  async function saveCurrentSitemapAsTemplate() {
+    if (!state.currentSitemap) return;
+    const name = prompt(t('phTemplateName'), state.currentSitemap.name || state.currentSitemap._id);
+    if (name === null) return;
+    try {
+      const template = SitemapTemplates.fromSitemap(state.currentSitemap, name.trim());
+      await AppStorage.saveSitemapTemplate(template);
+      alert(t('templateSaved', { name: template.name }));
+      await populateTemplateSelect();
+    } catch (e) {
+      alert(t('templateSaveFailed', { msg: e && e.message ? e.message : e }));
     }
   }
 
@@ -2010,6 +2074,7 @@
     const btnSelNone = document.getElementById('btn-gallery-select-none');
     if (btnSelNone) btnSelNone.addEventListener('click', () => setGallerySelection(false));
 
+    populateTemplateSelect();
     const btnDlAll = document.getElementById('btn-gallery-download-all');
     if (btnDlAll) btnDlAll.addEventListener('click', () => startGalleryDownloads());
     const btnDmCancel = document.getElementById('btn-dm-cancel');

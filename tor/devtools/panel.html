@@ -82,6 +82,10 @@
             <span data-i18n="exportSitemap">Export sitemap</span>
           </a>
           <div class="dropdown-divider"></div>
+          <a class="dropdown-item" id="nav-sitemap-save-template">
+            <span class="icon-save"></span>
+            <span data-i18n="saveAsTemplate">Save as template</span>
+          </a>
           <a class="dropdown-item" id="nav-sitemap-delete" style="color:#f87171;">
             <span class="icon-trash"></span>
             <span data-i18n="deleteSitemap">Delete sitemap</span>
@@ -421,6 +425,16 @@
               <label class="form-label" for="field-sitemap-id"><span data-i18n="sitemapName">Sitemap name</span> <span style="color:#f43f5e;">*</span></label>
               <input type="text" id="field-sitemap-id" class="form-control" placeholder="e.g. ecommerce_store, news_articles" data-i18n-placeholder="phSitemapName">
               <div class="form-help" data-i18n="helpSitemapName">Name of the sitemap (letters, numbers, spaces, hyphens).</div>
+            </div>
+
+            <div class="form-group" id="sitemap-template-group">
+              <label class="form-label" for="field-sitemap-template" data-i18n="templateLabel">Template</label>
+              <select id="field-sitemap-template" class="form-control">
+                <option value="" data-i18n="templateNone">Empty sitemap (no template)</option>
+                <optgroup label="—" id="optgroup-builtin-templates" data-i18n-label="templateBuiltinGroup"></optgroup>
+                <optgroup label="—" id="optgroup-user-templates" data-i18n-label="templateUserGroup" hidden></optgroup>
+              </select>
+              <div class="form-help" data-i18n="helpTemplate">Start from a ready selector skeleton — you only need to adjust the CSS selectors.</div>
             </div>
 
             <div class="form-group">
@@ -923,7 +937,8 @@
   <script src="../lib/i18n.js"></script>
   <script src="../lib/transforms.js"></script>
   <script src="../lib/datamode.js"></script>
-  <script src="../lib/download_manager.js"></script>
+  <script src="../lib/sitemap_templates.js"></script>
+<script src="../lib/download_manager.js"></script>
 <script src="../lib/zip.js"></script>
   <script src="../dashboard/dashboard.js"></script>
 </body>

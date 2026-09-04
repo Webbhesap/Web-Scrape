@@ -31,7 +31,7 @@ const SCRIPTS = [
   'src/export/Exporter.js',
   'src/ui/SelectorGraph.js',
   'lib/i18n.js',
-  'lib/zip.js',
+  'lib/zip.js', 'lib/sitemap_templates.js',
   'dashboard/dashboard.js'
 ];
 

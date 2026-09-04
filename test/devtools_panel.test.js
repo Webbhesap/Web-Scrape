@@ -58,7 +58,7 @@ test('DevTools panel - opening the panel does not auto-start the slideshow', asy
     'src/engine/CssSelectorGenerator.js', 'src/engine/SelectorEngine.js',
     'src/engine/DataFlattener.js', 'src/engine/ScraperEngine.js',
     'src/storage/Storage.js', 'src/export/Exporter.js', 'src/ui/SelectorGraph.js',
-    'lib/i18n.js', 'lib/zip.js', 'dashboard/dashboard.js'
+    'lib/i18n.js', 'lib/zip.js', 'lib/sitemap_templates.js', 'dashboard/dashboard.js'
   ];
   for (const rel of scripts) {
     const el = window.document.createElement('script');

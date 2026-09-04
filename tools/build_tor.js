@@ -381,6 +381,55 @@ function transformStorageJs(source) {
     'storage init warning'
   );
 
+  // Ö8 — sitemap template persistence (chrome callback -> browser promise)
+
+  out = replaceExact(
+    out,
+    `      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.get('sitemap_templates', (res) => {
+            resolve((res && Array.isArray(res.sitemap_templates)) ? res.sitemap_templates : []);
+          });
+        });
+      }`,
+    `      if (this.isChromeStorage) {
+        try {
+          const res = await browser.storage.local.get('sitemap_templates');
+          return (res && Array.isArray(res.sitemap_templates)) ? res.sitemap_templates : [];
+        } catch (e) {
+          return [];
+        }
+      }`,
+    'storage loadSitemapTemplates'
+  );
+
+  out = replaceExact(
+    out,
+    `      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.set({ sitemap_templates: list }, () => resolve(true));
+        });
+      }`,
+    `      if (this.isChromeStorage) {
+        await browser.storage.local.set({ sitemap_templates: list });
+        return true;
+      }`,
+    'storage saveSitemapTemplate'
+  );
+
+  out = replaceExact(
+    out,
+    `      if (this.isChromeStorage) {
+        return new Promise((resolve) => {
+          chrome.storage.local.set({ sitemap_templates: next }, () => resolve(true));
+        });
+      }`,
+    `      if (this.isChromeStorage) {
+        await browser.storage.local.set({ sitemap_templates: next });
+        return true;
+      }`,
+    'storage deleteSitemapTemplate'
+  );
   // Property/method names say "Chrome" but the Tor build only talks to
   // browser.storage — rename them so the native code reads honestly.
   out = out
