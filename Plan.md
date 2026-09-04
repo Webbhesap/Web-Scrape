@@ -236,7 +236,7 @@ Her adımdan sonra: `npm test` (tümü yeşil olmalı), `node tools/build_tor.js
 ## İlerleme durumu
 
 - [x] Ö1 Metin dönüşümleri + varsayılan değer
-- [ ] Ö2 Gölge DOM desteği
+- [x] Ö2 Gölge DOM desteği
 - [ ] Ö3 Yeniden deneme / maksimum derinlik / URL desenleri
 - [ ] Ö4 Artımlı kazıma (append/merge/replace)
 - [ ] Ö5 Sütun filtreleri, istatistikler, çoklu sıralama, sütun görünürlüğü

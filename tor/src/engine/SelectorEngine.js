@@ -154,10 +154,52 @@
   class SelectorEngine {
     constructor(options = {}) {
       this.baseUrl = options.baseUrl || (typeof window !== 'undefined' ? window.location.href : '');
+      // Shadow DOM piercing (Ö2): on by default; sitemaps can turn it off to
+      // restore the plain querySelectorAll-only behaviour.
+      this.shadowDom = options.shadowDom !== false;
+      // Per-context cache of discovered shadow roots — the DOM walk is the
+      // expensive part and pages are scraped selector after selector.
+      this._shadowRootCache = typeof WeakMap === 'function' ? new WeakMap() : null;
     }
 
     setBaseUrl(url) {
       this.baseUrl = url;
+    }
+
+    /**
+     * Collects every shadow root reachable from `context` (open roots only —
+     * closed roots are invisible to scripts by design). Results are cached
+     * per context so repeated selector queries do not re-walk the DOM.
+     */
+    collectShadowRoots(context) {
+      if (!this._shadowRootCache) return this._walkShadowRoots(context);
+      let cached = this._shadowRootCache.get(context);
+      if (!cached) {
+        cached = this._walkShadowRoots(context);
+        this._shadowRootCache.set(context, cached);
+      }
+      return cached;
+    }
+
+    _walkShadowRoots(context) {
+      const roots = [];
+      const seenContainers = new Set();
+      const walk = (node) => {
+        if (!node || seenContainers.has(node)) return;
+        seenContainers.add(node);
+        let descendants = [];
+        try {
+          descendants = node.querySelectorAll ? node.querySelectorAll('*') : [];
+        } catch (e) { return; }
+        descendants.forEach((el) => {
+          if (el.shadowRoot) {
+            roots.push(el.shadowRoot);
+            walk(el.shadowRoot);
+          }
+        });
+      };
+      walk(context);
+      return roots;
     }
 
     queryAll(context, selectorStr) {
@@ -166,7 +208,23 @@
         return [context];
       }
       try {
-        return Array.from(context.querySelectorAll(selectorStr));
+        const direct = Array.from(context.querySelectorAll(selectorStr));
+        if (!this.shadowDom) return direct;
+        // Shadow DOM piercing: also query every reachable shadow root.
+        // Contexts that already live INSIDE a shadow tree query their own
+        // subtree normally (the boundary only blocks outside-in), so only
+        // deeper roots need to be visited.
+        const shadowRoots = this.collectShadowRoots(context);
+        if (shadowRoots.length === 0) return direct;
+        const out = direct.slice();
+        for (const root of shadowRoots) {
+          let matched = [];
+          try { matched = Array.from(root.querySelectorAll(selectorStr)); } catch (e) { continue; }
+          for (const el of matched) {
+            if (!out.includes(el)) out.push(el);
+          }
+        }
+        return out;
       } catch (e) {
         console.warn(`Invalid CSS Selector "${selectorStr}":`, e);
         return [];
@@ -178,12 +236,25 @@
       if (selectorStr === '_parent_' || selectorStr === '_self' || selectorStr === '.') {
         return context;
       }
+      const all = this.queryAll(context, selectorStr);
+      // Fast path: plain document order when nothing was pierced.
+      if (!this.shadowDom) {
+        try {
+          return context.querySelector(selectorStr);
+        } catch (e) {
+          console.warn(`Invalid CSS Selector "${selectorStr}":`, e);
+          return null;
+        }
+      }
+      // Prefer a light-DOM match first (original behaviour), then shadow hits.
       try {
-        return context.querySelector(selectorStr);
+        const direct = context.querySelector(selectorStr);
+        if (direct) return direct;
       } catch (e) {
         console.warn(`Invalid CSS Selector "${selectorStr}":`, e);
         return null;
       }
+      return all.length ? all[0] : null;
     }
 
     /**

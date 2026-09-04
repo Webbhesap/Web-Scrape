@@ -46,7 +46,10 @@
         finish: []
       };
 
-      this.selectorEngine = new SelectorEngine();
+      // Ö2: propagate the sitemap's shadow-DOM piercing preference.
+      this.selectorEngine = new SelectorEngine({
+        shadowDom: !(sitemap && sitemap.options && sitemap.options.shadowDom === false)
+      });
     }
 
     on(event, callback) {

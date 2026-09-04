@@ -172,6 +172,7 @@
     elements.sitemapMetaError = document.getElementById('sitemap-meta-error');
     elements.fieldSitemapId = document.getElementById('field-sitemap-id');
     elements.fieldSitemapUrls = document.getElementById('field-sitemap-urls');
+    elements.fieldSitemapShadow = document.getElementById('field-sitemap-shadow');
     elements.btnSaveSitemapMeta = document.getElementById('btn-save-sitemap-meta');
 
     // Sitemap Import Form
@@ -1321,6 +1322,7 @@
     elements.btnSaveSitemapMeta.textContent = t('createSitemap');
     elements.formSitemapMeta.reset();
     elements.fieldSitemapId.readOnly = false;
+    if (elements.fieldSitemapShadow) elements.fieldSitemapShadow.checked = true;
     updateUrlRangePreview();
     switchView('sitemap-meta');
   }
@@ -1336,6 +1338,9 @@
     elements.fieldSitemapId.value = state.currentSitemap.name || state.currentSitemap._id;
     elements.fieldSitemapId.readOnly = false;
     elements.fieldSitemapUrls.value = state.currentSitemap.startUrl.join('\n');
+    if (elements.fieldSitemapShadow) {
+      elements.fieldSitemapShadow.checked = !(state.currentSitemap.options && state.currentSitemap.options.shadowDom === false);
+    }
     updateUrlRangePreview();
     switchView('sitemap-meta');
   }
@@ -1372,6 +1377,9 @@
           return urlText;
         });
         
+        if (!state.currentSitemap.options) state.currentSitemap.options = {};
+        state.currentSitemap.options.shadowDom = !(elements.fieldSitemapShadow && elements.fieldSitemapShadow.checked === false);
+
         const validation = state.currentSitemap.validate();
         if (!validation.isValid) {
           showSitemapError(validation.errors.join(' '));
@@ -1385,7 +1393,10 @@
           _id: rawName,
           name: rawName,
           startUrl: urls,
-          selectors: []
+          selectors: [],
+          options: {
+            shadowDom: !(elements.fieldSitemapShadow && elements.fieldSitemapShadow.checked === false)
+          }
         });
 
         const validation = newSitemap.validate();

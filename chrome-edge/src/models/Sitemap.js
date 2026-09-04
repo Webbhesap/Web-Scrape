@@ -80,6 +80,12 @@
         }
       }
 
+      // Crawl behaviour options (Ö2: shadowDom piercing is on by default).
+      this.options = Object.assign(
+        { shadowDom: true },
+        (data.options && typeof data.options === 'object') ? data.options : {}
+      );
+
       this.createdAt = data.createdAt || new Date().toISOString();
       this.updatedAt = data.updatedAt || new Date().toISOString();
     }
@@ -217,6 +223,7 @@
         _id: this._id,
         name: this.name,
         startUrl: this.startUrl,
+        options: Object.assign({}, this.options),
         selectors: this.selectors.map(s => s.toJSON())
       };
     }

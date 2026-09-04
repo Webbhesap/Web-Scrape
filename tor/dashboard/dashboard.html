@@ -425,6 +425,10 @@
               <label class="form-label" for="field-sitemap-urls"><span data-i18n="startUrls">Start URL(s)</span> <span style="color:#f43f5e;">*</span></label>
               <textarea id="field-sitemap-urls" class="form-control form-control-mono" placeholder="https://example.com/products&#10;https://example.com/page/[1-100]&#10;https://example.com/category/[a-z]" rows="5"></textarea>
               <div class="form-help" data-i18n="helpStartUrls">Enter one URL per line. Supports ranges like [1-100], zero-padded [001-100], steps [0-100:10], and letters [a-z].</div>
+              <label class="form-checkbox-label" style="margin-top:8px;">
+                <input type="checkbox" id="field-sitemap-shadow" checked>
+                <span data-i18n="shadowDomOption">Descend into Shadow DOM (web components)</span>
+              </label>
               <div id="url-range-preview" style="display:none; margin-top:8px; padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; background:rgba(45,212,191,0.06); font-size:12px;">
                 <div style="font-weight:600; color:#2dd4bf; margin-bottom:4px;">
                   <span data-i18n="urlPreviewTitle">URL expansion preview:</span>

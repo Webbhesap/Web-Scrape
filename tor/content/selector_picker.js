@@ -114,13 +114,41 @@
         scopeRoots.forEach((root) => {
           if (root.matches && root.matches(sel)) out.push(root);
           root.querySelectorAll(sel).forEach((n) => out.push(n));
+          // Ö2: pierce shadow roots inside the scope so elements rendered in
+          // web components can be previewed and picked too.
+          queryShadowRoots(root).forEach((sr) => {
+            sr.querySelectorAll(sel).forEach((n) => {
+              if (!out.includes(n)) out.push(n);
+            });
+          });
         });
         return out;
       }
-      return Array.from(document.querySelectorAll(sel));
+      const out = Array.from(document.querySelectorAll(sel));
+      queryShadowRoots(document).forEach((sr) => {
+        sr.querySelectorAll(sel).forEach((n) => {
+          if (!out.includes(n)) out.push(n);
+        });
+      });
+      return out;
     } catch (e) {
       return [];
     }
+  }
+
+  /** Collects every reachable (open) shadow root under `node`. */
+  function queryShadowRoots(node) {
+    const roots = [];
+    if (!node || !node.querySelectorAll) return roots;
+    let all;
+    try { all = node.querySelectorAll('*'); } catch (e) { return roots; }
+    all.forEach((el) => {
+      if (el.shadowRoot) {
+        roots.push(el.shadowRoot);
+        queryShadowRoots(el.shadowRoot).forEach((r) => roots.push(r));
+      }
+    });
+    return roots;
   }
 
   function isInsideScope(el) {
