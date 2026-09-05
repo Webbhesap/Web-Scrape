@@ -4,15 +4,16 @@
  */
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['./SelectorEngine.js', './DataFlattener.js'], factory);
+    define(['./SelectorEngine.js', './DataFlattener.js', '../../lib/robots.js'], factory);
   } else if (typeof module === 'object' && module.exports) {
     const SelectorEngine = require('./SelectorEngine.js');
     const DataFlattener = require('./DataFlattener.js');
-    module.exports = factory(SelectorEngine, DataFlattener);
+    const Robots = require('../../lib/robots.js');
+    module.exports = factory(SelectorEngine, DataFlattener, Robots);
   } else {
-    root.ScraperEngine = factory(root.SelectorEngine, root.DataFlattener);
+    root.ScraperEngine = factory(root.SelectorEngine, root.DataFlattener, root.Robots);
   }
-}(typeof self !== 'undefined' ? self : this, function (SelectorEngine, DataFlattener) {
+}(typeof self !== 'undefined' ? self : this, function (SelectorEngine, DataFlattener, Robots) {
   'use strict';
 
   class ScraperEngine {
@@ -40,6 +41,11 @@
         // through the normal retry/backoff path, and eventually is logged
         // as an error while the crawl continues.
         requestTimeout: 0,
+        // P3.10: optional robots.txt respect mode ("saygı modu"). OFF by
+        // default — only enabled sitemaps fetch origin/robots.txt and skip
+        // disallowed pages (per-sitemap key, mirrored from sitemap.options).
+        respectRobots: false,
+        robotsUserAgent: '*',
         fetcher: null // custom DOM fetcher function: async (url) => { document, url }
       }, options);
 
@@ -47,6 +53,7 @@
       this.visitedUrls = new Set();
       this.enqueuedKeys = new Set(); // `${parentSelectorId}|${url}` — prevents duplicate queue entries
       this.results = [];
+      this._robotsRules = new Map(); // P3.10: origin -> parsed rules (null = none)
       this.isRunning = false;
       this.isPaused = false;
       this.isStopped = false;
@@ -134,6 +141,7 @@
       this.queue = [];
       this.visitedUrls.clear();
       this.enqueuedKeys.clear();
+      this._robotsRules = new Map();
       DataFlattener.resetOrderCounter();
 
       const startUrls = this.sitemap.getExpandedStartUrls();
@@ -439,6 +447,12 @@
           }
 
           const job = this.queue.shift();
+          // P3.10: robots.txt respect mode — a disallowed page is skipped
+          // WITHOUT being marked visited and WITHOUT spending page budget.
+          if (this.options.respectRobots && !(await this._robotsAllows(job.url))) {
+            this.emit('error', { url: job.url, error: 'robots.txt: saygı modu — URL engellendi' });
+            continue;
+          }
           this.visitedUrls.add(job.url);
           inFlight++;
           reserved++;
@@ -488,6 +502,10 @@
      * resulting rows and emits `recordScraped` for each of them.
      */
     pushLeafRecord(data, job, currentUrl) {
+      // P3.10: carry the page-title selector's value on every record.
+      if (job && job._titleField) {
+        data = Object.assign({}, data, { [job._titleField]: job._titleValue });
+      }
       const leafNode = {
         order: DataFlattener.generateOrderKey(),
         _meta: { startUrl: job.startUrl, currentUrl: currentUrl },
@@ -497,6 +515,41 @@
       for (const r of flatRows) {
         this.results.push(r);
         this.emit('recordScraped', r);
+      }
+    }
+
+    /**
+     * P3.10: asks the (per-origin cached) robots policy whether the URL may
+     * be crawled. Non-http(s) URLs and fetch failures always pass.
+     */
+    async _robotsAllows(url) {
+      if (typeof Robots === 'undefined' || !Robots) return true;
+      let parsed;
+      try { parsed = new URL(url); } catch (e) { return true; }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return true;
+      const origin = parsed.origin;
+      if (!this._robotsRules) this._robotsRules = new Map();
+      let rules = this._robotsRules.get(origin);
+      if (rules === undefined) {
+        rules = await Robots.fetchRules(origin);
+        this._robotsRules.set(origin, rules);
+      }
+      return Robots.isAllowed(url, rules, this.options.robotsUserAgent || '*');
+    }
+
+    /**
+     * P3.10: evaluates the sitemap's page-title selector ("tarama başlığı
+     * seçicisi") once per page. Returns trimmed text or null.
+     */
+    _extractPageTitle(doc, selector) {
+      try {
+        if (!doc || typeof doc.querySelector !== 'function' || !selector) return null;
+        const el = doc.querySelector(selector);
+        if (!el) return null;
+        const text = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+        return text || null;
+      } catch (e) {
+        return null;
       }
     }
 
@@ -545,6 +598,14 @@
     async processPageContext(docContext, job, currentUrl) {
       const parentId = job.parentSelectorId || '_root';
       const childSelectors = this.sitemap.getDirectChildSelectors(parentId);
+
+      // P3.10: page-title selector — evaluated once per page; every record
+      // produced from this page carries the value under the chosen field.
+      const pageTitleOpt = this.options.pageTitle;
+      if (pageTitleOpt && pageTitleOpt.enabled && pageTitleOpt.selector) {
+        job._titleValue = this._extractPageTitle(docContext, pageTitleOpt.selector);
+        job._titleField = pageTitleOpt.field || 'pageTitle';
+      }
 
       if (childSelectors.length === 0) {
         return;

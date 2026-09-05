@@ -86,6 +86,22 @@
         (data.options && typeof data.options === 'object') ? data.options : {}
       );
 
+      // P3.10: robots.txt respect mode is an opt-in boolean key.
+      this.options.respectRobots = this.options.respectRobots === true;
+      if (typeof this.options.robotsUserAgent !== 'string' || !this.options.robotsUserAgent) {
+        this.options.robotsUserAgent = '*';
+      }
+
+      // P3.10: page-title ("tarama başlığı") selector — captures one header
+      // element per page into every record. Defaults: off, `title`, `pageTitle`.
+      const pt = (this.options.pageTitle && typeof this.options.pageTitle === 'object')
+        ? this.options.pageTitle : {};
+      this.options.pageTitle = {
+        enabled: pt.enabled === true,
+        selector: (typeof pt.selector === 'string' && pt.selector.trim()) ? pt.selector.trim() : 'title',
+        field: (typeof pt.field === 'string' && pt.field.trim()) ? pt.field.trim() : 'pageTitle'
+      };
+
       // P2.4: per-column CSV types persisted with the sitemap.
       // Shape: [{ name, type: 'number' | 'date', format?: 'YYYY-MM-DD' | 'DD/MM/YYYY' }]
       // (absent entry = plain text)

@@ -453,6 +453,29 @@
                 <input type="checkbox" id="field-sitemap-shadow" checked>
                 <span data-i18n="shadowDomOption">Descend into Shadow DOM (web components)</span>
               </label>
+              <label class="form-checkbox-label" style="margin-top:8px;">
+                <input type="checkbox" id="field-sitemap-robots">
+                <span data-i18n="robotsOption">Respect robots.txt (fetch + follow per origin)</span>
+              </label>
+              <div class="form-help" data-i18n="robotsHelp">Optional. When ON, the crawler fetches each origin's robots.txt once and skips disallowed pages. Off by default.</div>
+
+              <div id="sitemap-title-group" style="margin-top:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:6px; background:rgba(45,212,191,0.04);">
+                <label class="form-checkbox-label">
+                  <input type="checkbox" id="field-sitemap-title-enabled">
+                  <span data-i18n="pageTitleOption">Capture page title (crawl header selector)</span>
+                </label>
+                <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:150px;">
+                    <label class="form-label" for="field-sitemap-title-selector" data-i18n="pageTitleSelector">CSS selector</label>
+                    <input type="text" id="field-sitemap-title-selector" class="form-control form-control-mono" value="title" placeholder="title, h1, .page-header">
+                  </div>
+                  <div style="flex:1; min-width:120px;">
+                    <label class="form-label" for="field-sitemap-title-field" data-i18n="pageTitleField">Result field</label>
+                    <input type="text" id="field-sitemap-title-field" class="form-control form-control-mono" value="pageTitle">
+                  </div>
+                </div>
+                <div class="form-help" data-i18n="pageTitleHelp">Each scraped record gets the matched element's text under this field name.</div>
+              </div>
               <div id="url-range-preview" style="display:none; margin-top:8px; padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; background:rgba(45,212,191,0.06); font-size:12px;">
                 <div style="font-weight:600; color:#2dd4bf; margin-bottom:4px;">
                   <span data-i18n="urlPreviewTitle">URL expansion preview:</span>
@@ -1015,6 +1038,7 @@
   <script src="../src/engine/CssSelectorGenerator.js"></script>
   <script src="../src/engine/SelectorEngine.js"></script>
   <script src="../src/engine/DataFlattener.js"></script>
+  <script src="../lib/robots.js"></script>
   <script src="../src/engine/ScraperEngine.js"></script>
   <script src="../src/storage/Storage.js"></script>
   <script src="../src/export/Exporter.js"></script>

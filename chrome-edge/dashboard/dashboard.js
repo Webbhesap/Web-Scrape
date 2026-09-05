@@ -201,6 +201,10 @@
     elements.fieldSitemapId = document.getElementById('field-sitemap-id');
     elements.fieldSitemapUrls = document.getElementById('field-sitemap-urls');
     elements.fieldSitemapShadow = document.getElementById('field-sitemap-shadow');
+    elements.fieldSitemapRobots = document.getElementById('field-sitemap-robots');
+    elements.fieldSitemapTitleEnabled = document.getElementById('field-sitemap-title-enabled');
+    elements.fieldSitemapTitleSelector = document.getElementById('field-sitemap-title-selector');
+    elements.fieldSitemapTitleField = document.getElementById('field-sitemap-title-field');
     elements.btnSaveSitemapMeta = document.getElementById('btn-save-sitemap-meta');
 
     // Sitemap Import Form
@@ -1446,6 +1450,10 @@
     elements.formSitemapMeta.reset();
     elements.fieldSitemapId.readOnly = false;
     if (elements.fieldSitemapShadow) elements.fieldSitemapShadow.checked = true;
+    if (elements.fieldSitemapRobots) elements.fieldSitemapRobots.checked = false;
+    if (elements.fieldSitemapTitleEnabled) elements.fieldSitemapTitleEnabled.checked = false;
+    if (elements.fieldSitemapTitleSelector) elements.fieldSitemapTitleSelector.value = 'title';
+    if (elements.fieldSitemapTitleField) elements.fieldSitemapTitleField.value = 'pageTitle';
     const tplSelect = document.getElementById('field-sitemap-template');
     if (tplSelect) tplSelect.value = '';
     const tplGroup = document.getElementById('sitemap-template-group');
@@ -1468,6 +1476,12 @@
     if (elements.fieldSitemapShadow) {
       elements.fieldSitemapShadow.checked = !(state.currentSitemap.options && state.currentSitemap.options.shadowDom === false);
     }
+    const sOpts = (state.currentSitemap && state.currentSitemap.options) || {};
+    if (elements.fieldSitemapRobots) elements.fieldSitemapRobots.checked = sOpts.respectRobots === true;
+    const sTitle = (sOpts.pageTitle && typeof sOpts.pageTitle === 'object') ? sOpts.pageTitle : {};
+    if (elements.fieldSitemapTitleEnabled) elements.fieldSitemapTitleEnabled.checked = sTitle.enabled === true;
+    if (elements.fieldSitemapTitleSelector) elements.fieldSitemapTitleSelector.value = sTitle.selector || 'title';
+    if (elements.fieldSitemapTitleField) elements.fieldSitemapTitleField.value = sTitle.field || 'pageTitle';
     const tplGroupEdit = document.getElementById('sitemap-template-group');
     if (tplGroupEdit) tplGroupEdit.style.display = 'none';
     updateUrlRangePreview();
@@ -1503,6 +1517,13 @@
         
         if (!state.currentSitemap.options) state.currentSitemap.options = {};
         state.currentSitemap.options.shadowDom = !(elements.fieldSitemapShadow && elements.fieldSitemapShadow.checked === false);
+        // P3.10: robots respect mode + page-title (crawl header) selector.
+        state.currentSitemap.options.respectRobots = !!(elements.fieldSitemapRobots && elements.fieldSitemapRobots.checked);
+        state.currentSitemap.options.pageTitle = {
+          enabled: !!(elements.fieldSitemapTitleEnabled && elements.fieldSitemapTitleEnabled.checked),
+          selector: (elements.fieldSitemapTitleSelector && elements.fieldSitemapTitleSelector.value.trim()) || 'title',
+          field: (elements.fieldSitemapTitleField && elements.fieldSitemapTitleField.value.trim()) || 'pageTitle'
+        };
 
         const validation = state.currentSitemap.validate();
         if (!validation.isValid) {
@@ -1527,7 +1548,14 @@
           startUrl: urls,
           selectors: templateSelectors,
           options: {
-            shadowDom: !(elements.fieldSitemapShadow && elements.fieldSitemapShadow.checked === false)
+            shadowDom: !(elements.fieldSitemapShadow && elements.fieldSitemapShadow.checked === false),
+            // P3.10: robots respect mode + page-title (crawl header) selector.
+            respectRobots: !!(elements.fieldSitemapRobots && elements.fieldSitemapRobots.checked),
+            pageTitle: {
+              enabled: !!(elements.fieldSitemapTitleEnabled && elements.fieldSitemapTitleEnabled.checked),
+              selector: (elements.fieldSitemapTitleSelector && elements.fieldSitemapTitleSelector.value.trim()) || 'title',
+              field: (elements.fieldSitemapTitleField && elements.fieldSitemapTitleField.value.trim()) || 'pageTitle'
+            }
           }
         });
 
@@ -1856,6 +1884,12 @@
       discardInitialElements: discardInitialElements,
       concurrency: concurrency,
       requestTimeout: requestTimeout,
+      // P3.10: per-sitemap robots respect mode + page-title selector.
+      respectRobots: !!(state.currentSitemap && state.currentSitemap.options && state.currentSitemap.options.respectRobots),
+      robotsUserAgent: (state.currentSitemap && state.currentSitemap.options && state.currentSitemap.options.robotsUserAgent) || '*',
+      pageTitle: (state.currentSitemap && state.currentSitemap.options && state.currentSitemap.options.pageTitle)
+        ? state.currentSitemap.options.pageTitle
+        : { enabled: false, selector: 'title', field: 'pageTitle' },
       fetcher: createTabOrFetchRunner()
     };
   }
