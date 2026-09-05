@@ -27,6 +27,19 @@
         maxDepth: 0,              // Ö3: 0 = unlimited link depth
         includeUrlPatterns: [],   // Ö3: glob list; empty = follow everything
         excludeUrlPatterns: [],   // Ö3: glob list; matching URLs are never enqueued
+        // P1.1: when a click selector has "discard initial elements" on, the
+        // content script tags pre-click container matches with
+        // data-ws-initial; the engine then drops them so only click-loaded
+        // content becomes a record.
+        discardInitialElements: false,
+        // P1.3: how many pages may be in flight at once (1 = serial, the
+        // historic behaviour). Capped at 8.
+        concurrency: 1,
+        // P1.3: per-request timeout in ms (0 = disabled). A hung page used
+        // to stall the whole crawl forever; now the request fails, goes
+        // through the normal retry/backoff path, and eventually is logged
+        // as an error while the crawl continues.
+        requestTimeout: 0,
         fetcher: null // custom DOM fetcher function: async (url) => { document, url }
       }, options);
 
@@ -93,6 +106,21 @@
       throw new Error('No DOM fetcher available in this environment.');
     }
 
+    /** Finalizes a run: normalizes results, emits finish + statusChange. */
+    async _finishRun() {
+      this.isRunning = false;
+      this.endTime = Date.now();
+      const normalized = DataFlattener.normalizeRecords(this.results);
+      this.results = normalized;
+      this.emit('finish', {
+        totalRecords: this.results.length,
+        pagesVisited: this.pagesVisited,
+        elapsedMs: this.endTime - this.startTime,
+        results: this.results
+      });
+      this.emit('statusChange', this.getStatus());
+    }
+
     async start() {
       if (this.isRunning) return;
 
@@ -133,17 +161,93 @@
       } catch (err) {
         this.emit('error', err);
       } finally {
-        this.isRunning = false;
-        this.endTime = Date.now();
-        const normalized = DataFlattener.normalizeRecords(this.results);
-        this.results = normalized;
-        this.emit('finish', {
-          totalRecords: this.results.length,
-          pagesVisited: this.pagesVisited,
-          elapsedMs: this.endTime - this.startTime,
-          results: this.results
-        });
-        this.emit('statusChange', this.getStatus());
+        await this._finishRun();
+      }
+    }
+
+    /**
+     * P1.2 — serializes the crawl's resumable state: remaining queue,
+     * visited/enqueued bookkeeping and everything scraped so far.
+     * Safe to JSON.stringify (plain objects/arrays only).
+     */
+    exportState() {
+      return {
+        format: 'web-scraper-queue-state',
+        version: 1,
+        savedAt: new Date().toISOString(),
+        sitemapId: this.sitemap && this.sitemap._id ? this.sitemap._id : null,
+        pagesVisited: this.pagesVisited,
+        queue: this.queue.map((j) => ({
+          url: j.url,
+          startUrl: j.startUrl,
+          parentSelectorId: j.parentSelectorId,
+          parentData: j.parentData,
+          depth: j.depth,
+          paginationDepth: j.paginationDepth
+        })),
+        visitedUrls: Array.from(this.visitedUrls),
+        enqueuedKeys: Array.from(this.enqueuedKeys),
+        results: this.results.slice()
+      };
+    }
+
+    /**
+     * P1.2 — restores a previously exported state (see exportState).
+     * Throws on malformed input; never touches engine fields until the
+     * whole object has validated.
+     */
+    importState(saved) {
+      if (!saved || typeof saved !== 'object') throw new Error('Invalid state: not an object');
+      if (saved.format !== 'web-scraper-queue-state') throw new Error('Invalid state: wrong format');
+      const queue = Array.isArray(saved.queue) ? saved.queue : null;
+      const visited = Array.isArray(saved.visitedUrls) ? saved.visitedUrls : null;
+      const keys = Array.isArray(saved.enqueuedKeys) ? saved.enqueuedKeys : null;
+      const results = Array.isArray(saved.results) ? saved.results : null;
+      if (!queue || !visited || !keys || !results) throw new Error('Invalid state: missing fields');
+      for (const job of queue) {
+        if (!job || typeof job.url !== 'string' || !job.url) throw new Error('Invalid state: bad queue entry');
+      }
+
+      this.queue = queue.map((j) => ({
+        url: j.url,
+        startUrl: j.startUrl || j.url,
+        parentSelectorId: j.parentSelectorId || '_root',
+        parentData: (j.parentData && typeof j.parentData === 'object') ? j.parentData : {},
+        depth: parseInt(j.depth, 10) || 0,
+        paginationDepth: parseInt(j.paginationDepth, 10) || 0
+      }));
+      this.visitedUrls = new Set(visited);
+      this.enqueuedKeys = new Set(keys);
+      this.results = results.slice();
+      this.pagesVisited = Math.max(0, parseInt(saved.pagesVisited, 10) || 0);
+      this.endTime = null;
+      return this;
+    }
+
+    /**
+     * P1.2 — continues a crawl from an imported state. Unlike start() this
+     * resets NOTHING: the queue, the visited set and the records collected
+     * so far are honoured, and already-visited pages are not re-fetched.
+     */
+    async startFromState() {
+      if (this.isRunning) return;
+      if (this.queue.length === 0) {
+        this.emit('error', new Error('Saved state has an empty queue — nothing to continue.'));
+        return;
+      }
+
+      this.isRunning = true;
+      this.isPaused = false;
+      this.isStopped = false;
+      this.startTime = Date.now();
+      this.emit('statusChange', this.getStatus());
+
+      try {
+        await this.runLoop();
+      } catch (err) {
+        this.emit('error', err);
+      } finally {
+        await this._finishRun();
       }
     }
 
@@ -238,55 +342,145 @@
       throw lastErr;
     }
 
+    /**
+     * P1.3 — wraps the fetcher with a per-request timeout. The rejection is
+     * thrown inside fetchWithRetry, so timed-out requests go through the
+     * same retry/backoff path as any other failure; after the last attempt
+     * the page is logged as an error and the crawl continues.
+     */
+    async fetchWithTimeout(fetcher, url) {
+      const timeout = parseInt(this.options.requestTimeout, 10) || 0;
+      if (timeout <= 0) return fetcher(url);
+      let timer = null;
+      try {
+        return await Promise.race([
+          fetcher(url),
+          new Promise((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error(`Request timed out after ${timeout}ms: ${url}`)),
+              timeout
+            );
+          })
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+
     async runLoop() {
       const fetcher = this.options.fetcher || this.defaultFetcher.bind(this);
+      const timedFetcher = async (url) => this.fetchWithTimeout(fetcher, url);
 
-      while (this.queue.length > 0 && !this.isStopped) {
-        while (this.isPaused && !this.isStopped) {
-          await this.sleep(200);
-        }
-        if (this.isStopped) break;
+      // P1.3: worker pool. concurrency=1 reproduces the historic serial
+      // loop exactly (no polling, same pacing, same events).
+      const workers = Math.max(1, Math.min(8, parseInt(this.options.concurrency, 10) || 1));
 
-        if (this.options.maxPages > 0 && this.pagesVisited >= this.options.maxPages) {
-          break;
-        }
+      // Global pacing: request STARTS are at least requestInterval apart,
+      // regardless of how many workers are running (the first request of a
+      // run skips the delay, as before). The lock serializes the
+      // wait-and-mark step so two workers waking from the same sleep cannot
+      // both grab the same slot.
+      let lastRequestStart = 0;
+      let firstRequestStarted = false;
+      let paceLock = Promise.resolve();
+      const paceRequest = () => {
+        const run = async () => {
+          if (this.options.requestInterval <= 0) return;
+          const now = Date.now();
+          if (firstRequestStarted) {
+            const earliest = lastRequestStart + this.options.requestInterval;
+            if (earliest > now) await this.sleep(earliest - now);
+          }
+          firstRequestStarted = true;
+          lastRequestStart = Date.now();
+        };
+        const out = paceLock.then(run, run);
+        paceLock = out.catch(() => {});
+        return out;
+      };
 
-        const job = this.queue.shift();
-        if (this.visitedUrls.has(job.url) && job.parentSelectorId === '_root') {
-          continue; // skip duplicate root URL
-        }
-        this.visitedUrls.add(job.url);
+      let inFlight = 0;
+      // Pages currently holding a maxPages budget slot (reserved BEFORE the
+      // fetch, released when the page is done). Counting only pagesVisited
+      // would let N concurrent workers all pass the gate in the same tick
+      // and overshoot the budget.
+      let reserved = 0;
 
-        this.emit('pageStart', { url: job.url, queueLength: this.queue.length });
+      const worker = async () => {
+        while (!this.isStopped) {
+          while (this.isPaused && !this.isStopped) {
+            await this.sleep(200);
+          }
+          if (this.isStopped) return;
 
-        // Request delay
-        if (this.options.requestInterval > 0 && this.pagesVisited > 0) {
-          await this.sleep(this.options.requestInterval);
-        }
-
-        try {
-          const fetchResult = await this.fetchWithRetry(fetcher, job.url);
-          const doc = fetchResult.document;
-          const currentUrl = fetchResult.url || job.url;
-
-          this.selectorEngine.setBaseUrl(currentUrl);
-
-          // Page load delay if configured
-          if (this.options.pageLoadDelay > 0) {
-            await this.sleep(this.options.pageLoadDelay);
+          // Nothing to do: the queue is empty and no other worker is
+          // processing a page that might enqueue more work.
+          if (this.queue.length === 0 && inFlight === 0) return;
+          if (this.queue.length === 0) {
+            // Multi-worker: wait for the in-flight page to finish and
+            // possibly enqueue follow-ups.
+            await this.sleep(20);
+            continue;
           }
 
-          this.pagesVisited++;
+          // Drop duplicate root-URL jobs without spending a budget slot.
+          const peek = this.queue[0];
+          if (peek && this.visitedUrls.has(peek.url) && peek.parentSelectorId === '_root') {
+            this.queue.shift();
+            continue;
+          }
 
-          // Execute scrape on this page for the current parent selector branch
-          await this.processPageContext(doc, job, currentUrl);
+          // maxPages gate on visited + reserved, so concurrent workers can
+          // never push the run past the page budget.
+          if (this.options.maxPages > 0 && (this.pagesVisited + reserved) >= this.options.maxPages) {
+            if (inFlight === 0) return;
+            await this.sleep(20);
+            continue;
+          }
 
-          this.emit('pageComplete', { url: job.url, totalRecords: this.results.length });
-          this.emit('statusChange', this.getStatus());
-        } catch (err) {
-          this.emit('error', { url: job.url, error: err.message || err });
+          const job = this.queue.shift();
+          this.visitedUrls.add(job.url);
+          inFlight++;
+          reserved++;
+
+          this.emit('pageStart', { url: job.url, queueLength: this.queue.length });
+
+          // Request delay (global pacing, see paceRequest)
+          await paceRequest();
+
+          try {
+            const fetchResult = await this.fetchWithRetry(timedFetcher, job.url);
+            const doc = fetchResult.document;
+            const currentUrl = fetchResult.url || job.url;
+
+            this.selectorEngine.setBaseUrl(currentUrl);
+
+            // Page load delay if configured
+            if (this.options.pageLoadDelay > 0) {
+              await this.sleep(this.options.pageLoadDelay);
+            }
+
+            this.pagesVisited++;
+
+            // Execute scrape on this page for the current parent selector branch
+            await this.processPageContext(doc, job, currentUrl);
+
+            this.emit('pageComplete', { url: job.url, totalRecords: this.results.length });
+            this.emit('statusChange', this.getStatus());
+          } catch (err) {
+            this.emit('error', { url: job.url, error: err.message || err });
+          } finally {
+            inFlight--;
+            reserved--;
+          }
         }
+      };
+
+      const pool = [];
+      for (let i = 0; i < workers; i++) {
+        pool.push(worker());
       }
+      await Promise.all(pool);
     }
 
     /**
@@ -389,7 +583,13 @@
       // 3. Process Container Selectors (Element wrappers)
       if (containerSelectors.length > 0) {
         for (const contSel of containerSelectors) {
-          const elements = this.selectorEngine.extractElement(docContext, contSel);
+          let elements = this.selectorEngine.extractElement(docContext, contSel);
+          // P1.1: drop container matches that existed before the clicks
+          // (tagged data-ws-initial by the content script) so only
+          // click-loaded content is scraped.
+          if (this.options.discardInitialElements) {
+            elements = elements.filter((el) => !(el && el.hasAttribute && el.hasAttribute('data-ws-initial')));
+          }
           const childFields = this.sitemap.getDirectChildSelectors(contSel.id);
 
           for (const itemElement of elements) {
@@ -426,7 +626,12 @@
 
             // Pass 3: nested element containers.
             for (const nestedSel of childContainers) {
-              const subElements = this.selectorEngine.extractElement(itemElement, nestedSel);
+              let subElements = this.selectorEngine.extractElement(itemElement, nestedSel);
+              // P1.1: same initial-element filtering applies to nested
+              // containers (they share the same pre-click DOM snapshot).
+              if (this.options.discardInitialElements) {
+                subElements = subElements.filter((el) => !(el && el.hasAttribute && el.hasAttribute('data-ws-initial')));
+              }
               const subChildFields = this.sitemap.getDirectChildSelectors(nestedSel.id);
               for (const subEl of subElements) {
                 const subRecord = Object.assign({}, itemRecord);
@@ -471,6 +676,15 @@
         if (!hasTable) {
           this.pushLeafRecord(pageRecord, job, currentUrl);
         }
+      }
+
+      // P1.1: extraction for this page is complete — remove the initial-
+      // element markers so they never leak into scraped HTML output or the
+      // live page the user is looking at (tab-runner documents are shared).
+      if (this.options.discardInitialElements) {
+        try {
+          docContext.querySelectorAll('[data-ws-initial]').forEach((el) => el.removeAttribute('data-ws-initial'));
+        } catch (e) { /* document may be detached */ }
       }
     }
   }

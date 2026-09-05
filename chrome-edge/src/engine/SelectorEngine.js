@@ -351,18 +351,22 @@
     }
 
     extractPopupLink(context, selector) {
+      // Same post-processing contract as extractLink: regex cleaning,
+      // transforms and defaultValue apply to popup links too (previously
+      // this type silently ignored all three while every other type
+      // honoured them).
       if (selector.multiple) {
         const elements = this.queryAll(context, selector.selector);
         return elements.map(el => ({
           href: extractPopupUrl(el, this.baseUrl),
-          text: cleanText(el.textContent)
+          text: postProcess(applyRegex(cleanText(el.textContent), selector.regex), selector)
         }));
       } else {
         const el = this.queryFirst(context, selector.selector);
-        if (!el) return { href: '', text: '' };
+        if (!el) return postProcess({ href: '', text: '' }, selector);
         return {
           href: extractPopupUrl(el, this.baseUrl),
-          text: cleanText(el.textContent)
+          text: postProcess(applyRegex(cleanText(el.textContent), selector.regex), selector)
         };
       }
     }

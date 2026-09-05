@@ -45,6 +45,22 @@
     return key;
   }
 
+  // P1.4: storage writes can now fail (quota). A scraped-data save that
+  // cannot persist must NOT be swallowed: log it, tell the user, and keep
+  // the records in memory so they can still be exported.
+  function handleDataSaveError(e, context) {
+    const msg = (e && e.code === 'QUOTA_EXCEEDED')
+      ? t('quotaExceeded')
+      : String((e && e.message) || e || 'Unknown storage error');
+    console.error('Scraped data save failed' + (context ? ' (' + context + ')' : '') + ':', e);
+    if (typeof logScrape === 'function') {
+      try { logScrape(msg, 'warn'); } catch (e2) {}
+    }
+    if (e && e.code === 'QUOTA_EXCEEDED' && typeof alert === 'function') {
+      try { alert(msg); } catch (e2) {}
+    }
+  }
+
   function init() {
     cacheElements();
     renderIcons();
@@ -786,8 +802,17 @@
     // Sitemap Export View buttons
     document.getElementById('btn-copy-sitemap-json').addEventListener('click', () => {
       elements.fieldExportJson.select();
-      navigator.clipboard.writeText(elements.fieldExportJson.value);
-      alert(t('copiedJson'));
+      // Unhandled rejection guard: on non-secure origins / permissions the
+      // clipboard promise rejects — surface it instead of dying silently.
+      const write = navigator.clipboard && navigator.clipboard.writeText
+        ? navigator.clipboard.writeText(elements.fieldExportJson.value)
+        : Promise.reject(new Error('clipboard unavailable'));
+      Promise.resolve(write)
+        .then(() => alert(t('copiedJson')))
+        .catch((e) => {
+          console.warn('Clipboard write failed:', e);
+          alert(t('clipboardFallback'));
+        });
     });
 
     document.getElementById('btn-download-sitemap-json').addEventListener('click', () => {
@@ -1215,6 +1240,76 @@
     }
   }
 
+  /**
+   * Injects the picker scripts into the tab and delivers the start message.
+   *
+   * Returns { ok: true } on success, or { ok: false, stage, error } where
+   * stage is 'inject' (scripting API refused) or 'message' (no content
+   * script answered). Both failures have one common root cause on
+   * Firefox/Tor: the tab was opened BEFORE the host permission was granted
+   * (its manifest content scripts never ran, and Firefox may not re-bind
+   * newly granted permissions to tabs that are already loaded). A reload of
+   * the tab clears both conditions, which is why the caller recovers with
+   * reload + one retry instead of dead-ending (the "Select button does
+   * nothing" report).
+   */
+  async function injectPickerAndStart(tabId, message) {
+    try {
+      await browser.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content/selector_picker.js']
+      });
+    } catch (e) {
+      console.warn('Script injection error:', e && e.message);
+      return { ok: false, stage: 'inject', error: e && e.message };
+    }
+    try {
+      await browser.scripting.insertCSS({
+        target: { tabId: tabId },
+        files: ['content/selector_picker.css']
+      });
+    } catch (e) {
+      console.warn('CSS injection warning:', e && e.message);
+    }
+    try {
+      await browser.tabs.sendMessage(tabId, message);
+      return { ok: true };
+    } catch (e) {
+      console.warn('Message send warning:', e && e.message);
+      return { ok: false, stage: 'message', error: e && e.message };
+    }
+  }
+
+  /**
+   * Resolves true once the tab reaches the 'complete' load state.
+   * Also settles immediately if the tab is already complete or disappears,
+   * and never hangs past timeoutMs.
+   */
+  function waitForTabComplete(tabId, timeoutMs) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        try { browser.tabs.onUpdated.removeListener(onUpdated); } catch (e) { /* already gone */ }
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const onUpdated = (updatedId, changeInfo) => {
+        if (updatedId === tabId && changeInfo && changeInfo.status === 'complete') done(true);
+      };
+      const timer = setTimeout(() => done(false), timeoutMs);
+      try {
+        browser.tabs.onUpdated.addListener(onUpdated);
+        browser.tabs.get(tabId).then((info) => {
+          if (info && info.status === 'complete') done(true);
+        }).catch(() => { done(false); });
+      } catch (e) {
+        done(false);
+      }
+    });
+  }
+
   async function launchElementPicker(mode) {
     const selStr = elements.fieldSelectorCss.value.trim();
     const selType = elements.fieldSelectorType.value;
@@ -1250,27 +1345,6 @@
         return;
       }
 
-      // Inject picker scripts
-      try {
-        await browser.scripting.executeScript({
-          target: { tabId: tabId },
-          files: ['content/selector_picker.js']
-        });
-      } catch (e) {
-        console.warn('Script injection error:', e && e.message);
-        alert(t('attachFail', { msg: e && e.message }));
-        return;
-      }
-
-      try {
-        await browser.scripting.insertCSS({
-          target: { tabId: tabId },
-          files: ['content/selector_picker.css']
-        });
-      } catch (e) {
-        console.warn('CSS injection warning:', e && e.message);
-      }
-
       let msgType = 'START_PICKER';
       if (mode === 'preview') msgType = 'ELEMENT_PREVIEW';
       else if (mode === 'data-preview') msgType = 'DATA_PREVIEW';
@@ -1280,21 +1354,41 @@
         const parentSel = state.currentSitemap.getSelectorById(state.currentParentSelector);
         if (parentSel && parentSel.selector) scopeSelector = parentSel.selector;
       }
-      try {
-        await browser.tabs.sendMessage(tabId, {
-          type: msgType,
-          selector: selStr,
-          selectorType: selType,
-          multiple: isMult,
-          scopeSelector: scopeSelector
-        });
-      } catch (e) {
-        // No listener answered — the page most likely predates the
-        // host-permission grant (content scripts never ran on it). Tell the
-        // user instead of failing silently: this is the classic "Select
-        // button does nothing" report on Tor.
-        console.warn('Message send warning:', e && e.message);
-        alert(t('pickerNoReceiver'));
+
+      const pickerMessage = {
+        type: msgType,
+        selector: selStr,
+        selectorType: selType,
+        multiple: isMult,
+        scopeSelector: scopeSelector
+      };
+
+      let result = await injectPickerAndStart(tabId, pickerMessage);
+
+      if (!result.ok) {
+        // First attempt failed — almost always a tab that predates the
+        // host-permission grant. Offer a single reload + retry so the
+        // button recovers on its own instead of telling the user to do it
+        // by hand (and giving up).
+        if (confirm(t('pickerReloadToEnable'))) {
+          try {
+            await browser.tabs.reload(tabId);
+          } catch (e) {
+            alert(t('pickerReloadTimeout'));
+            return;
+          }
+          const loaded = await waitForTabComplete(tabId, 20000);
+          if (!loaded) {
+            alert(t('pickerReloadTimeout'));
+            return;
+          }
+          result = await injectPickerAndStart(tabId, pickerMessage);
+          if (!result.ok) {
+            alert(t('pickerNoReceiver'));
+          }
+        } else {
+          alert(t('pickerNoReceiver'));
+        }
       }
       return;
     }
@@ -1657,6 +1751,21 @@
   function bindScraperEvents() {
     document.getElementById('btn-start-scraping').addEventListener('click', () => startScraping());
 
+    // P1.2: save the in-flight crawl / resume it from a saved file.
+    const btnSaveProgress = document.getElementById('btn-scrape-save-progress');
+    if (btnSaveProgress) btnSaveProgress.addEventListener('click', saveScrapeProgress);
+    const btnResumeFile = document.getElementById('btn-scrape-resume-file');
+    const fileState = document.getElementById('file-scrape-state');
+    if (btnResumeFile && fileState) {
+      btnResumeFile.addEventListener('click', () => fileState.click());
+      fileState.addEventListener('change', async () => {
+        const file = fileState.files && fileState.files[0];
+        fileState.value = ''; // allow re-selecting the same file
+        if (!file) return;
+        await resumeScrapeFromFile(file);
+      });
+    }
+
     // Ö4: the merge key column only matters in merge mode.
     const dataModeSel = document.getElementById('scrape-data-mode');
     if (dataModeSel) {
@@ -1701,6 +1810,127 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
+  /**
+   * Reads the scrape-configuration form into engine options.
+   * Number.isFinite guards let an explicit 0 pass through (|| would
+   * silently replace 0 with the default and force an unwanted delay).
+   */
+  function buildEngineOptions() {
+    const parsedInterval = parseInt(document.getElementById('scrape-request-interval').value, 10);
+    const parsedPageDelay = parseInt(document.getElementById('scrape-page-delay').value, 10);
+    const requestInterval = Number.isFinite(parsedInterval) && parsedInterval >= 0 ? parsedInterval : 2000;
+    const pageLoadDelay = Number.isFinite(parsedPageDelay) && parsedPageDelay >= 0 ? parsedPageDelay : 2000;
+    const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
+    const retriesRaw = parseInt(document.getElementById('scrape-request-retries').value, 10);
+    const requestRetries = Number.isFinite(retriesRaw) && retriesRaw >= 0 ? Math.min(retriesRaw, 5) : 1;
+    const maxDepthRaw = parseInt(document.getElementById('scrape-max-depth').value, 10);
+    const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw >= 0 ? maxDepthRaw : 0;
+    // P1.3: parallelism + per-request timeout. The engine caps concurrency
+    // at 8 and treats a missing/negative timeout as "off".
+    const concurrencyRaw = parseInt((document.getElementById('scrape-concurrency') || {}).value, 10);
+    const concurrency = Number.isFinite(concurrencyRaw) && concurrencyRaw > 0 ? Math.min(concurrencyRaw, 8) : 1;
+    const timeoutRaw = parseInt((document.getElementById('scrape-request-timeout') || {}).value, 10);
+    const requestTimeout = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? Math.min(timeoutRaw, 300000) : 0;
+    const splitPatterns = (value) => String(value || '')
+      .split(/[\n,]/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const includeUrlPatterns = splitPatterns((document.getElementById('scrape-include-patterns') || {}).value);
+    const excludeUrlPatterns = splitPatterns((document.getElementById('scrape-exclude-patterns') || {}).value);
+
+    // P1.1: enable initial-element discarding when any click selector asks
+    // for it — the engine then drops data-ws-initial tagged container
+    // matches that the content script marked before the clicks.
+    const discardInitialElements = (state.currentSitemap && state.currentSitemap.selectors || [])
+      .some((s) => s.type === 'SelectorElementClick' && s.discardInitialElements === true);
+
+    return {
+      requestInterval: requestInterval,
+      pageLoadDelay: pageLoadDelay,
+      maxPages: maxPages,
+      requestRetries: requestRetries,
+      maxDepth: maxDepth,
+      includeUrlPatterns: includeUrlPatterns,
+      excludeUrlPatterns: excludeUrlPatterns,
+      discardInitialElements: discardInitialElements,
+      concurrency: concurrency,
+      requestTimeout: requestTimeout,
+      fetcher: createTabOrFetchRunner()
+    };
+  }
+
+  /**
+   * Wires the live-monitor UI to an engine's events.
+   *
+   * Results are bound to the sitemap that was scraped when the run STARTED
+   * — switching sitemaps (or deleting one) mid-scrape used to make the
+   * finish handler write records into the wrong sitemap or crash on null.
+   */
+  function attachEngineEvents(engine, scrapeSitemapId) {
+    engine.on('statusChange', (status) => {
+      updateScrapeMonitorStatus(status);
+    });
+
+    engine.on('pageStart', (data) => {
+      elements.scrapeCurrentUrl.textContent = data.url;
+      logScrape(t('scrapeVisiting', { n: data.queueLength, url: data.url }), 'info');
+    });
+
+    engine.on('recordScraped', () => {
+      elements.metricRecords.textContent = engine.results.length;
+    });
+
+    engine.on('retry', (info) => {
+      logScrape(t('scrapeRetrying', { url: info.url, attempt: info.attempt, ofAttempts: info.ofAttempts }), 'warn');
+    });
+
+    engine.on('error', (err) => {
+      scrapeErrorCount++;
+      if (elements.metricErrors) elements.metricErrors.textContent = scrapeErrorCount;
+      logScrape(t('scrapeError', { msg: err.error || err.message || err }), 'error');
+    });
+
+    engine.on('finish', async (summary) => {
+      logScrape(t('scrapeFinished', { records: summary.totalRecords, pages: summary.pagesVisited, time: (summary.elapsedMs / 1000).toFixed(1) }), 'success');
+
+      // Ö4: incremental scraping — combine with previously stored records.
+      const dataMode = (document.getElementById('scrape-data-mode') || {}).value || 'replace';
+      const mergeKey = ((document.getElementById('scrape-merge-key') || {}).value || '').trim();
+      let toSave = summary.results;
+      if (dataMode !== 'replace') {
+        const previous = await AppStorage.getScrapedData(scrapeSitemapId);
+        if (typeof DataModes !== 'undefined' && DataModes && DataModes.apply) {
+          toSave = DataModes.apply(dataMode, previous, summary.results, mergeKey);
+          if (dataMode === 'merge' && !mergeKey) {
+            logScrape(t('mergeKeyMissing'), 'warn');
+          }
+          logScrape(t('dataModeSummary', { mode: dataMode, total: toSave.length }), 'success');
+        }
+      }
+      try {
+        await AppStorage.saveScrapedData(scrapeSitemapId, toSave);
+      } catch (e) {
+        handleDataSaveError(e, 'after scrape');
+        // Keep the records in memory so they can still be exported
+        // even though they could not be persisted.
+        state.scrapedData = toSave.slice();
+      }
+      // Auto-open the viewer only when the user is still on that sitemap.
+      if (state.currentSitemap && state.currentSitemap._id === scrapeSitemapId) {
+        // "Download image files locally" on an Image selector is now wired up:
+        // after the crawl, the gallery opens and its download queue starts.
+        const wantsImages = (state.currentSitemap.selectors || [])
+          .some((s) => s.type === 'SelectorImage' && s.downloadImage === true);
+        if (wantsImages && typeof DownloadManager !== 'undefined') {
+          await openGallery();
+          startGalleryDownloads();
+        } else {
+          openBrowseData();
+        }
+      }
+    });
+  }
+
   async function startScraping() {
     if (!state.currentSitemap) return;
 
@@ -1719,109 +1949,124 @@
       return;
     }
 
-    // Number.isFinite guards let an explicit 0 pass through (|| would
-    // silently replace 0 with the default and force an unwanted delay).
-    const parsedInterval = parseInt(document.getElementById('scrape-request-interval').value, 10);
-    const parsedPageDelay = parseInt(document.getElementById('scrape-page-delay').value, 10);
-    const requestInterval = Number.isFinite(parsedInterval) && parsedInterval >= 0 ? parsedInterval : 2000;
-    const pageLoadDelay = Number.isFinite(parsedPageDelay) && parsedPageDelay >= 0 ? parsedPageDelay : 2000;
-    const maxPages = parseInt(document.getElementById('scrape-max-pages').value, 10) || 0;
-    const retriesRaw = parseInt(document.getElementById('scrape-request-retries').value, 10);
-    const requestRetries = Number.isFinite(retriesRaw) && retriesRaw >= 0 ? Math.min(retriesRaw, 5) : 1;
-    const maxDepthRaw = parseInt(document.getElementById('scrape-max-depth').value, 10);
-    const maxDepth = Number.isFinite(maxDepthRaw) && maxDepthRaw >= 0 ? maxDepthRaw : 0;
-    const splitPatterns = (value) => String(value || '')
-      .split(/[\n,]/)
-      .map((x) => x.trim())
-      .filter(Boolean);
-    const includeUrlPatterns = splitPatterns((document.getElementById('scrape-include-patterns') || {}).value);
-    const excludeUrlPatterns = splitPatterns((document.getElementById('scrape-exclude-patterns') || {}).value);
-
     elements.scrapeLogBox.innerHTML = '';
     scrapeLogHistory = [];
     scrapeErrorCount = 0;
     if (elements.metricErrors) elements.metricErrors.textContent = '0';
     logScrape(t('scrapeStarting', { name: state.currentSitemap.name || state.currentSitemap._id }), 'info');
 
-    // Bind results to the sitemap that was scraped when the run STARTED —
-    // switching sitemaps (or deleting one) mid-scrape used to make the finish
-    // handler write records into the wrong sitemap or crash on null.
     const scrapeSitemapId = state.currentSitemap._id;
 
     // Initialize Scraper Engine
-    state.scraperEngine = new ScraperEngine(state.currentSitemap, {
-      requestInterval: requestInterval,
-      pageLoadDelay: pageLoadDelay,
-      maxPages: maxPages,
-      requestRetries: requestRetries,
-      maxDepth: maxDepth,
-      includeUrlPatterns: includeUrlPatterns,
-      excludeUrlPatterns: excludeUrlPatterns,
-      fetcher: createTabOrFetchRunner()
-    });
-
-    // Event listeners
-    state.scraperEngine.on('statusChange', (status) => {
-      updateScrapeMonitorStatus(status);
-    });
-
-    state.scraperEngine.on('pageStart', (data) => {
-      elements.scrapeCurrentUrl.textContent = data.url;
-      logScrape(t('scrapeVisiting', { n: data.queueLength, url: data.url }), 'info');
-    });
-
-    state.scraperEngine.on('recordScraped', () => {
-      elements.metricRecords.textContent = state.scraperEngine.results.length;
-    });
-
-    state.scraperEngine.on('retry', (info) => {
-      logScrape(t('scrapeRetrying', { url: info.url, attempt: info.attempt, ofAttempts: info.ofAttempts }), 'warn');
-    });
-
-    state.scraperEngine.on('error', (err) => {
-      scrapeErrorCount++;
-      if (elements.metricErrors) elements.metricErrors.textContent = scrapeErrorCount;
-      logScrape(t('scrapeError', { msg: err.error || err.message || err }), 'error');
-    });
-
-    state.scraperEngine.on('finish', async (summary) => {
-      logScrape(t('scrapeFinished', { records: summary.totalRecords, pages: summary.pagesVisited, time: (summary.elapsedMs / 1000).toFixed(1) }), 'success');
-
-      // Ö4: incremental scraping — combine with previously stored records.
-      const dataMode = (document.getElementById('scrape-data-mode') || {}).value || 'replace';
-      const mergeKey = ((document.getElementById('scrape-merge-key') || {}).value || '').trim();
-      let toSave = summary.results;
-      if (dataMode !== 'replace') {
-        const previous = await AppStorage.getScrapedData(scrapeSitemapId);
-        if (typeof DataModes !== 'undefined' && DataModes && DataModes.apply) {
-          toSave = DataModes.apply(dataMode, previous, summary.results, mergeKey);
-          if (dataMode === 'merge' && !mergeKey) {
-            logScrape(t('mergeKeyMissing'), 'warn');
-          }
-          logScrape(t('dataModeSummary', { mode: dataMode, total: toSave.length }), 'success');
-        }
-      }
-      await AppStorage.saveScrapedData(scrapeSitemapId, toSave);
-      // Auto-open the viewer only when the user is still on that sitemap.
-      if (state.currentSitemap && state.currentSitemap._id === scrapeSitemapId) {
-        // "Download image files locally" on an Image selector is now wired up:
-        // after the crawl, the gallery opens and its download queue starts.
-        const wantsImages = (state.currentSitemap.selectors || [])
-          .some((s) => s.type === 'SelectorImage' && s.downloadImage === true);
-        if (wantsImages && typeof DownloadManager !== 'undefined') {
-          await openGallery();
-          startGalleryDownloads();
-        } else {
-          openBrowseData();
-        }
-      }
-    });
+    state.scraperEngine = new ScraperEngine(state.currentSitemap, buildEngineOptions());
+    attachEngineEvents(state.scraperEngine, scrapeSitemapId);
 
     // Start timer loop
     startElapsedTimer();
 
     // Run scraper
     state.scraperEngine.start();
+  }
+
+  /**
+   * P1.2 — downloads the in-flight crawl as a JSON file: remaining queue,
+   * visited/enqueued bookkeeping and every record scraped so far.
+   */
+  function saveScrapeProgress() {
+    const engine = state.scraperEngine;
+    if (!engine || (engine.queue.length === 0 && engine.results.length === 0)) {
+      alert(t('progressNothingToSave'));
+      return;
+    }
+    const saved = engine.exportState();
+    const name = state.currentSitemap ? (state.currentSitemap._id || 'scrape') : 'scrape';
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const blob = new Blob([JSON.stringify(saved, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, `${name}_progress_${stamp}.json`);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (engine.isRunning) {
+      logScrape(t('progressSaved'), 'success');
+    }
+  }
+
+  /**
+   * P1.2 — loads a saved-state file and continues the crawl from it:
+   * visited pages are not re-fetched, the records collected before the
+   * interruption are kept, and the remaining queue is drained.
+   */
+  async function resumeScrapeFromFile(file) {
+    if (!state.currentSitemap) {
+      alert(t('stateNoSitemap'));
+      return;
+    }
+    if (state.scraperEngine && state.scraperEngine.isRunning) {
+      logScrape(t('scrapeAlreadyRunning'), 'error');
+      return;
+    }
+
+    let saved = null;
+    try {
+      // file.text() covers every modern browser; the FileReader fallback
+      // keeps older engines (and jsdom test runs) working.
+      const text = typeof file.text === 'function'
+        ? await file.text()
+        : await new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(fr.result);
+            fr.onerror = () => reject(fr.error);
+            fr.readAsText(file);
+          });
+      saved = JSON.parse(text);
+    } catch (e) {
+      console.warn('Could not read saved state:', e);
+      alert(t('stateInvalid'));
+      return;
+    }
+
+    const permitted = await new Promise((resolve) => ensureHostPermission(resolve));
+    if (!permitted) {
+      logScrape(t('hostPermNeeded'), 'error');
+      return;
+    }
+
+    elements.scrapeLogBox.innerHTML = '';
+    scrapeLogHistory = [];
+    scrapeErrorCount = 0;
+    if (elements.metricErrors) elements.metricErrors.textContent = '0';
+
+    const scrapeSitemapId = state.currentSitemap._id;
+    const engine = new ScraperEngine(state.currentSitemap, buildEngineOptions());
+    try {
+      engine.importState(saved);
+    } catch (e) {
+      console.warn('Rejected saved state:', e && e.message);
+      alert(t('stateInvalid'));
+      return;
+    }
+    if (saved && saved.sitemapId && saved.sitemapId !== scrapeSitemapId) {
+      alert(t('stateSitemapMismatch'));
+      return;
+    }
+    if (engine.queue.length === 0) {
+      // Nothing left to do — but the scraped records still matter: store
+      // them so an interrupted run does not lose its work.
+      const toSave = engine.results.slice();
+      try {
+        await AppStorage.saveScrapedData(scrapeSitemapId, toSave);
+      } catch (e) {
+        handleDataSaveError(e, 'resume (empty queue)');
+        state.scrapedData = toSave.slice();
+      }
+      logScrape(t('resumeEmptyQueue'), 'warn');
+      return;
+    }
+
+    state.scraperEngine = engine;
+    attachEngineEvents(engine, scrapeSitemapId);
+    logScrape(t('resumeStarted'), 'success');
+    startElapsedTimer();
+    engine.startFromState();
   }
 
   function createTabOrFetchRunner() {
@@ -2717,7 +2962,8 @@
         td.addEventListener('blur', async () => {
           row[h] = td.textContent;
           if (state.currentSitemap) {
-            await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+            try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
+            catch (e) { handleDataSaveError(e, 'manual edit'); }
           }
         });
         tr.appendChild(td);
@@ -2736,7 +2982,8 @@
         const masterIdx = state.scrapedData.indexOf(row);
         if (masterIdx >= 0) state.scrapedData.splice(masterIdx, 1);
         if (state.currentSitemap) {
-          await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+          try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
+          catch (e) { handleDataSaveError(e, 'manual edit'); }
         }
         // Keep the current page valid after removal.
         const maxPage = Math.max(1, Math.ceil(Math.max(0, state.filteredData.length - 1) / state.dataPagination.pageSize));
@@ -2882,13 +3129,19 @@
         const rec = state.scrapedData[item.rowIdx];
         if (rec) rec[item.key] = next;
         item.url = next;
-        if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        if (state.currentSitemap) {
+        try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
+        catch (e) { handleDataSaveError(e, 'manual edit'); }
+      }
         renderGallery();
       });
       delBtn.addEventListener('click', async () => {
         const rec = state.scrapedData[item.rowIdx];
         if (rec) rec[item.key] = '';
-        if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+        if (state.currentSitemap) {
+        try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
+        catch (e) { handleDataSaveError(e, 'manual edit'); }
+      }
         renderGallery();
       });
       actions.appendChild(saveBtn);
@@ -3268,7 +3521,10 @@
         if (count) findPos = (idx + 1) % state.filteredData.length;
       }
     }
-    if (state.currentSitemap) await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData);
+    if (state.currentSitemap) {
+        try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
+        catch (e) { handleDataSaveError(e, 'manual edit'); }
+      }
     filterAndRenderDataTable();
     if (status) status.textContent = all ? t('replacedFields', { n: count }) : (count ? t('replacedOne') : t('noMatches'));
   }

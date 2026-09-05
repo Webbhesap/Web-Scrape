@@ -109,26 +109,34 @@
   function queryInScope(sel) {
     if (!sel) return [];
     try {
+      // Set-based membership keeps the merge O(n); the old Array-based
+      // membership check went quadratic on pages with many shadow-DOM
+      // matches (same class of fix the SelectorEngine merge already got).
+      const pushUnique = (out, seen, n) => {
+        if (!seen.has(n)) {
+          seen.add(n);
+          out.push(n);
+        }
+      };
       if (scopeRoots.length) {
         const out = [];
+        const seen = new Set();
         scopeRoots.forEach((root) => {
-          if (root.matches && root.matches(sel)) out.push(root);
-          root.querySelectorAll(sel).forEach((n) => out.push(n));
+          if (root.matches && root.matches(sel)) pushUnique(out, seen, root);
+          root.querySelectorAll(sel).forEach((n) => pushUnique(out, seen, n));
           // Ö2: pierce shadow roots inside the scope so elements rendered in
           // web components can be previewed and picked too.
           queryShadowRoots(root).forEach((sr) => {
-            sr.querySelectorAll(sel).forEach((n) => {
-              if (!out.includes(n)) out.push(n);
-            });
+            sr.querySelectorAll(sel).forEach((n) => pushUnique(out, seen, n));
           });
         });
         return out;
       }
-      const out = Array.from(document.querySelectorAll(sel));
+      const out = [];
+      const seen = new Set();
+      Array.from(document.querySelectorAll(sel)).forEach((n) => pushUnique(out, seen, n));
       queryShadowRoots(document).forEach((sr) => {
-        sr.querySelectorAll(sel).forEach((n) => {
-          if (!out.includes(n)) out.push(n);
-        });
+        sr.querySelectorAll(sel).forEach((n) => pushUnique(out, seen, n));
       });
       return out;
     } catch (e) {
@@ -381,6 +389,18 @@
         cancelSelection();
       }
       return;
+    }
+
+    // Never swallow keystrokes that belong to the host page: while the
+    // picker is armed, typing "p" or "c" into a normal page input field
+    // used to both eat the character AND fire Parent/Child on the
+    // selection — effectively making it impossible to type while picking.
+    const typingTarget = e.target;
+    if (typingTarget && typingTarget !== document && typingTarget !== window) {
+      const tag = (typingTarget.tagName || '').toUpperCase();
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || typingTarget.isContentEditable === true;
+      if (editable) return;
     }
 
     if (e.key === 'p' || e.key === 'P') {

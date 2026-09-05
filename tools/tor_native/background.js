@@ -7,28 +7,42 @@
  * background as an event page, not a service worker).
  */
 
-browser.runtime.onInstalled.addListener((details) => {
-  console.log('Web Scraper extension installed/updated:', details.reason);
+// Firefox/Tor Browser has NO contextMenus API (Chromium-only). Touching
+// browser.contextMenus unguarded used to throw a TypeError while the event
+// page was loading, which aborted the script BEFORE the message router below
+// was registered — the picker/dashboard message plumbing stayed dead.
+const hasContextMenus = typeof browser !== 'undefined'
+  && Boolean(browser.contextMenus && browser.contextMenus.create);
 
-  // menus/contextMenus.create is the one WebExtension API that still reports
-  // duplicate-id errors through the optional callback + runtime.lastError.
-  browser.contextMenus.create({
-    id: 'ws_scrape_page',
-    title: 'Scrape this page with Web Scraper',
-    contexts: ['page', 'link', 'selection']
-  }, () => {
-    if (browser.runtime.lastError) { /* consume duplicate menu item errors */ }
+if (hasContextMenus) {
+  browser.runtime.onInstalled.addListener((details) => {
+    console.log('Web Scraper extension installed/updated:', details.reason);
+
+    // menus/contextMenus.create is the one WebExtension API that still reports
+    // duplicate-id errors through the optional callback + runtime.lastError.
+    browser.contextMenus.create({
+      id: 'ws_scrape_page',
+      title: 'Scrape this page with Web Scraper',
+      contexts: ['page', 'link', 'selection']
+    }, () => {
+      if (browser.runtime.lastError) { /* consume duplicate menu item errors */ }
+    });
   });
-});
 
-// Handle Context Menu clicks
-browser.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'ws_scrape_page') {
-    const targetUrl = info.linkUrl || info.pageUrl || (tab ? tab.url : '');
-    const dashboardUrl = browser.runtime.getURL(`dashboard/dashboard.html?newUrl=${encodeURIComponent(targetUrl)}`);
-    browser.tabs.create({ url: dashboardUrl }).catch(() => { /* window may be closing */ });
-  }
-});
+  // Handle Context Menu clicks
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === 'ws_scrape_page') {
+      const targetUrl = info.linkUrl || info.pageUrl || (tab ? tab.url : '');
+      const dashboardUrl = browser.runtime.getURL(`dashboard/dashboard.html?newUrl=${encodeURIComponent(targetUrl)}`);
+      browser.tabs.create({ url: dashboardUrl }).catch(() => { /* window may be closing */ });
+    }
+  });
+} else {
+  browser.runtime.onInstalled.addListener((details) => {
+    console.log('Web Scraper extension installed/updated:', details.reason,
+      '(contextMenus not available in this browser — right-click menu disabled)');
+  });
+}
 
 // Message router. Returning a Promise from the listener is the native
 // Firefox way to deliver an asynchronous response.

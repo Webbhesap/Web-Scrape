@@ -20,13 +20,39 @@
     if (!clickSelector) {
       // Empty click selector: querySelectorAll('') would throw a SyntaxError
       // on every page of the crawl — treat it as "no clicks to perform".
-      return { clicksDone: 0 };
+      return { clicksDone: 0, initialMarked: 0 };
     }
     const clickType = selectorConfig.clickType || 'clickMore';
     const clickDelay = selectorConfig.clickDelay || 1000;
     // Hard safety cap: the dashboard can lower it per selector, but never
     // above this ceiling (a runaway "load more" loop would hang the crawl).
     const maxClicks = Math.min(parseInt(selectorConfig.maxClicks, 10) || 50, 200);
+
+    // "Discard initial elements" support: before any click lands, tag every
+    // record-container element that ALREADY exists in the DOM. The engine
+    // (with options.discardInitialElements) then drops the tagged elements
+    // and keeps only the content the clicks actually loaded. Marking happens
+    // here — the page's own JavaScript — because the dashboard only sees the
+    // post-click DOM.
+    let initialMarked = 0;
+    if (selectorConfig.discardInitialElements === true) {
+      const initialSelectors = Array.isArray(selectorConfig.initialSelectors)
+        ? selectorConfig.initialSelectors
+        : [];
+      for (const css of initialSelectors) {
+        if (!css) continue;
+        try {
+          document.querySelectorAll(css).forEach((el) => {
+            if (!el.hasAttribute('data-ws-initial')) {
+              el.setAttribute('data-ws-initial', '1');
+              initialMarked++;
+            }
+          });
+        } catch (e) {
+          // Invalid container selector — skip it, keep clicking.
+        }
+      }
+    }
 
     let clickCount = 0;
     const clickedElements = new Set();
@@ -57,7 +83,7 @@
       }
     }
 
-    return { clicksDone: clickCount };
+    return { clicksDone: clickCount, initialMarked: initialMarked };
   }
 
   async function handleScrollSelector(selectorConfig) {

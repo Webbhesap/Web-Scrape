@@ -99,6 +99,13 @@ function buildManifest(sourceJson) {
     scripts: ['src/storage/Storage.js', 'background.js']
   };
 
+  // 1b. Firefox has no contextMenus API (Chromium-only) — the permission
+  //     would be dead weight that makes Firefox log an unknown-permission
+  //     warning on every load. The native background guards the API.
+  if (Array.isArray(manifest.permissions)) {
+    manifest.permissions = manifest.permissions.filter((p) => p !== 'contextMenus');
+  }
+
   // 2. options_page is Chrome-only; Firefox requires options_ui.
   if (manifest.options_page) {
     manifest.options_ui = {
@@ -315,16 +322,59 @@ function transformStorageJs(source) {
   out = replaceExact(
     out,
     `      if (this.isChromeStorage) {
-        return new Promise((resolve) => {
+        // chrome.storage.local: keep the monolithic entry, but pre-check
+        // the quota so the failure is an explicit error, not a silent
+        // lastError swallowed by the callback.
+        let ok = true;
+        try {
+          const used = await new Promise((res) => {
+            chrome.storage.local.getBytesInUse(null, (b) => res(b || 0));
+          });
+          const key = \`data_\${sitemapId}\`;
+          const oldRaw = await new Promise((res) => {
+            chrome.storage.local.get(key, (r) => res(r ? r[key] : undefined));
+          });
+          const delta = JSON.stringify(entry).length - (oldRaw ? JSON.stringify(oldRaw).length : 0);
+          const quota = chrome.storage.local.QUOTA_BYTES || 100 * 1024 * 1024;
+          ok = used + delta <= quota;
+        } catch (e) {
+          ok = true; // measurement failed — let the set() attempt decide
+        }
+        if (!ok) throw quotaError();
+        return new Promise((resolve, reject) => {
           chrome.storage.local.set({ [\`data_\${sitemapId}\`]: entry }, () => {
+            const le = chrome.runtime && chrome.runtime.lastError;
+            if (le && isQuotaErr(le)) {
+              reject(quotaError());
+              return;
+            }
             resolve(entry);
           });
         });
       }`,
     `      if (this.isChromeStorage) {
+        // browser.storage.local: keep the monolithic entry, but pre-check
+        // the quota so the failure is an explicit error, not a silent
+        // rejection swallowed by the caller.
+        let ok = true;
+        try {
+          const used = (await browser.storage.local.getBytesInUse(null)) || 0;
+          const key = \`data_\${sitemapId}\`;
+          const oldRes = await browser.storage.local.get(key);
+          const oldRaw = oldRes ? oldRes[key] : undefined;
+          const delta = JSON.stringify(entry).length - (oldRaw ? JSON.stringify(oldRaw).length : 0);
+          const quota = browser.storage.local.QUOTA_BYTES || 100 * 1024 * 1024;
+          ok = used + delta <= quota;
+        } catch (e) {
+          ok = true; // measurement failed — let the set() attempt decide
+        }
+        if (!ok) throw quotaError();
         try {
           await browser.storage.local.set({ [\`data_\${sitemapId}\`]: entry });
-        } catch (e) { /* quota or shutdown */ }
+        } catch (e) {
+          if (isQuotaErr(e)) throw quotaError();
+          throw e;
+        }
         return entry;
       }`,
     'storage saveScrapedData'
@@ -631,7 +681,15 @@ function transformScraperContentJs(source) {
 // ---------------------------------------------------------------------------
 
 function transformI18nJs(source) {
-  return source.split('(chrome://)').join('(about:)');
+  return source
+    // Firefox/Tor system pages use the about: scheme, not chrome://.
+    .split('(chrome://)').join('(about:)')
+    // The English help texts name the browser explicitly — on Tor they must
+    // not tell the user to open a page "in Chrome" or mention "Chrome
+    // Extension mode".
+    .split('Please open a webpage in Chrome.').join('Please open a webpage in Tor Browser.')
+    .split('In Chrome Extension mode, elements will highlight directly on the active webpage.')
+      .join('In extension mode, elements will highlight directly on the active webpage.');
 }
 
 // ---------------------------------------------------------------------------

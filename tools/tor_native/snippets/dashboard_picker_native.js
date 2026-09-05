@@ -78,6 +78,76 @@
     }
   }
 
+  /**
+   * Injects the picker scripts into the tab and delivers the start message.
+   *
+   * Returns { ok: true } on success, or { ok: false, stage, error } where
+   * stage is 'inject' (scripting API refused) or 'message' (no content
+   * script answered). Both failures have one common root cause on
+   * Firefox/Tor: the tab was opened BEFORE the host permission was granted
+   * (its manifest content scripts never ran, and Firefox may not re-bind
+   * newly granted permissions to tabs that are already loaded). A reload of
+   * the tab clears both conditions, which is why the caller recovers with
+   * reload + one retry instead of dead-ending (the "Select button does
+   * nothing" report).
+   */
+  async function injectPickerAndStart(tabId, message) {
+    try {
+      await browser.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content/selector_picker.js']
+      });
+    } catch (e) {
+      console.warn('Script injection error:', e && e.message);
+      return { ok: false, stage: 'inject', error: e && e.message };
+    }
+    try {
+      await browser.scripting.insertCSS({
+        target: { tabId: tabId },
+        files: ['content/selector_picker.css']
+      });
+    } catch (e) {
+      console.warn('CSS injection warning:', e && e.message);
+    }
+    try {
+      await browser.tabs.sendMessage(tabId, message);
+      return { ok: true };
+    } catch (e) {
+      console.warn('Message send warning:', e && e.message);
+      return { ok: false, stage: 'message', error: e && e.message };
+    }
+  }
+
+  /**
+   * Resolves true once the tab reaches the 'complete' load state.
+   * Also settles immediately if the tab is already complete or disappears,
+   * and never hangs past timeoutMs.
+   */
+  function waitForTabComplete(tabId, timeoutMs) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        try { browser.tabs.onUpdated.removeListener(onUpdated); } catch (e) { /* already gone */ }
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const onUpdated = (updatedId, changeInfo) => {
+        if (updatedId === tabId && changeInfo && changeInfo.status === 'complete') done(true);
+      };
+      const timer = setTimeout(() => done(false), timeoutMs);
+      try {
+        browser.tabs.onUpdated.addListener(onUpdated);
+        browser.tabs.get(tabId).then((info) => {
+          if (info && info.status === 'complete') done(true);
+        }).catch(() => { done(false); });
+      } catch (e) {
+        done(false);
+      }
+    });
+  }
+
   async function launchElementPicker(mode) {
     const selStr = elements.fieldSelectorCss.value.trim();
     const selType = elements.fieldSelectorType.value;
@@ -113,27 +183,6 @@
         return;
       }
 
-      // Inject picker scripts
-      try {
-        await browser.scripting.executeScript({
-          target: { tabId: tabId },
-          files: ['content/selector_picker.js']
-        });
-      } catch (e) {
-        console.warn('Script injection error:', e && e.message);
-        alert(t('attachFail', { msg: e && e.message }));
-        return;
-      }
-
-      try {
-        await browser.scripting.insertCSS({
-          target: { tabId: tabId },
-          files: ['content/selector_picker.css']
-        });
-      } catch (e) {
-        console.warn('CSS injection warning:', e && e.message);
-      }
-
       let msgType = 'START_PICKER';
       if (mode === 'preview') msgType = 'ELEMENT_PREVIEW';
       else if (mode === 'data-preview') msgType = 'DATA_PREVIEW';
@@ -143,21 +192,41 @@
         const parentSel = state.currentSitemap.getSelectorById(state.currentParentSelector);
         if (parentSel && parentSel.selector) scopeSelector = parentSel.selector;
       }
-      try {
-        await browser.tabs.sendMessage(tabId, {
-          type: msgType,
-          selector: selStr,
-          selectorType: selType,
-          multiple: isMult,
-          scopeSelector: scopeSelector
-        });
-      } catch (e) {
-        // No listener answered — the page most likely predates the
-        // host-permission grant (content scripts never ran on it). Tell the
-        // user instead of failing silently: this is the classic "Select
-        // button does nothing" report on Tor.
-        console.warn('Message send warning:', e && e.message);
-        alert(t('pickerNoReceiver'));
+
+      const pickerMessage = {
+        type: msgType,
+        selector: selStr,
+        selectorType: selType,
+        multiple: isMult,
+        scopeSelector: scopeSelector
+      };
+
+      let result = await injectPickerAndStart(tabId, pickerMessage);
+
+      if (!result.ok) {
+        // First attempt failed — almost always a tab that predates the
+        // host-permission grant. Offer a single reload + retry so the
+        // button recovers on its own instead of telling the user to do it
+        // by hand (and giving up).
+        if (confirm(t('pickerReloadToEnable'))) {
+          try {
+            await browser.tabs.reload(tabId);
+          } catch (e) {
+            alert(t('pickerReloadTimeout'));
+            return;
+          }
+          const loaded = await waitForTabComplete(tabId, 20000);
+          if (!loaded) {
+            alert(t('pickerReloadTimeout'));
+            return;
+          }
+          result = await injectPickerAndStart(tabId, pickerMessage);
+          if (!result.ok) {
+            alert(t('pickerNoReceiver'));
+          }
+        } else {
+          alert(t('pickerNoReceiver'));
+        }
       }
       return;
     }

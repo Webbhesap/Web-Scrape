@@ -569,6 +569,18 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label" for="scrape-concurrency" data-i18n="concurrencyLabel">Parallel pages (1–8)</label>
+              <input type="number" id="scrape-concurrency" class="form-control" value="1" min="1" max="8">
+              <div class="form-help" data-i18n="helpConcurrency">How many pages to fetch at once. Keep 1 for delicate sites; request pacing still applies.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="scrape-request-timeout" data-i18n="requestTimeoutLabel">Request timeout (ms, 0 = off)</label>
+              <input type="number" id="scrape-request-timeout" class="form-control" value="0" min="0" step="500">
+              <div class="form-help" data-i18n="helpRequestTimeout">Hung pages fail after this many milliseconds, are retried with backoff, then logged as errors instead of stalling the whole crawl.</div>
+            </div>
+
+            <div class="form-group">
               <label class="form-label" for="scrape-include-patterns" data-i18n="includePatterns">Follow only URLs matching (optional)</label>
               <input type="text" id="scrape-include-patterns" class="form-control form-control-mono" placeholder="*/product/*">
               <div class="form-help" data-i18n="helpPatterns">Comma separated; * is a wildcard. Empty = follow everything.</div>
@@ -590,12 +602,23 @@
               <div class="form-help" data-i18n="helpDataMode">Merge updates rows whose key column matches; append adds everything; replace starts fresh.</div>
             </div>
           </div>
-          <div style="margin-top: 16px;">
+          <div style="margin-top: 16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <button class="btn btn-primary" id="btn-start-scraping" style="padding: 10px 24px; font-size: 14px;">
               <span class="icon-play"></span>
               <span data-i18n="startScraping">Start scraping</span>
             </button>
+            <!-- P1.2: save/resume a crawl mid-run (queue + results so far) -->
+            <button class="btn btn-secondary btn-sm" id="btn-scrape-save-progress" title="Download the remaining queue and the records scraped so far as JSON">
+              <span class="icon-download"></span>
+              <span data-i18n="saveProgress">Save progress</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-scrape-resume-file" title="Load a previously saved progress file and continue the crawl">
+              <span class="icon-upload"></span>
+              <span data-i18n="resumeFromState">Resume from saved state</span>
+            </button>
+            <input type="file" id="file-scrape-state" accept="application/json,.json" style="display:none;">
           </div>
+          <div class="form-help" data-i18n="helpSaveProgress" style="margin-top:6px;">Save progress downloads the remaining queue plus everything scraped so far. Resume reloads that file and continues without re-fetching visited pages.</div>
         </div>
       </div>
 

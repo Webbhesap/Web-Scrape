@@ -127,3 +127,49 @@ test('Sitemap - Full JSON Export and Re-Import Roundtrip', () => {
   assert.equal(imported.getSelectorById('price').regex, '\\$([0-9\\.]+)');
   assert.deepEqual(imported.getSelectorById('price').parentSelectors, ['product']);
 });
+
+test('SelectorEngine - PopupLink honours transforms/regex/defaultValue (audit fix B1)', () => {
+  const html = `
+    <div>
+      <a href="javascript:void(0)" onclick="window.open('https://example.com/detail', 'pop')" id="p1">  PRICE: 199 TL  </a>
+      <a href="javascript:void(0)" onclick="window.open('https://example.com/missing', 'pop')" id="p2" style="display:none"></a>
+      <div class="pop-multi"><a href="#" data-url="https://example.com/a" id="m1"> A </a><a href="#" data-url="https://example.com/b" id="m2"> B </a></div>
+    </div>
+  `;
+  const dom = new JSDOM(html);
+  const engine = new SelectorEngine({ baseUrl: 'https://example.com' });
+
+  // transform + regex (capture-group extraction, the engine's contract):
+  // grab the amount after "PRICE:", lowercase it
+  const s1 = new Selector({
+    id: 'p1',
+    type: 'SelectorPopupLink',
+    selector: '#p1',
+    regex: '^PRICE:\\s*(.+)$',
+    transforms: [{ type: 'lowercase' }]
+  });
+  const r1 = engine.extract(dom.window.document, s1);
+  assert.equal(r1.text, '199 tl', 'regex capture + lowercase applied');
+  assert.equal(r1.href, 'https://example.com/detail');
+
+  // defaultValue when the element has no text
+  const s2 = new Selector({
+    id: 'p2',
+    type: 'SelectorPopupLink',
+    selector: '#p2',
+    defaultValue: 'n/a'
+  });
+  const r2 = engine.extract(dom.window.document, s2);
+  assert.equal(r2.text, 'n/a', 'defaultValue applied for empty popup link text');
+
+  // multiple: transforms applied per item
+  const s3 = new Selector({
+    id: 'pm',
+    type: 'SelectorPopupLink',
+    selector: '.pop-multi a',
+    multiple: true,
+    transforms: [{ type: 'trim' }]
+  });
+  const r3 = engine.extract(dom.window.document, s3);
+  assert.deepEqual(r3.map((x) => x.text), ['A', 'B'], 'per-item transforms in multiple mode');
+});

@@ -33,7 +33,6 @@
     "storage",
     "unlimitedStorage",
     "scripting",
-    "contextMenus",
     "downloads"
   ],
   "host_permissions": [

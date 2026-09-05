@@ -32,12 +32,45 @@ test('Tor build - manifest uses options_ui and gecko settings', () => {
   assert.equal(manifest.browser_specific_settings.gecko.id, GECKO_ID);
   assert.ok(manifest.browser_specific_settings.gecko.strict_min_version, 'min version set for Tor Browser ESR');
 
-  // Everything else must be preserved from the Chrome manifest.
+  // Everything else must be preserved from the Chrome manifest — except
+  // contextMenus, which is a Chromium-only API (Firefox would log an
+  // unknown-permission warning; the native background guards the API).
   const chrome = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
-  assert.deepEqual(manifest.permissions, chrome.permissions);
+  assert.deepEqual(manifest.permissions,
+    chrome.permissions.filter((p) => p !== 'contextMenus'),
+    'permissions mirror the Chrome manifest minus the Chromium-only contextMenus');
+  assert.ok(!manifest.permissions.includes('contextMenus'), 'no dead contextMenus permission');
   assert.deepEqual(manifest.host_permissions, chrome.host_permissions);
   assert.deepEqual(manifest.content_scripts, chrome.content_scripts);
   assert.equal(manifest.devtools_page, chrome.devtools_page);
+});
+
+test('Tor build - native background survives the missing contextMenus API', () => {
+  const tree = buildTree();
+  const bg = tree.get('background.js').toString('utf8');
+
+  // Firefox/Tor has no browser.contextMenus — the event page used to throw a
+  // TypeError at load time, aborting the script before the runtime.onMessage
+  // router was registered (picker/dashboard messages went nowhere).
+  assert.match(bg, /hasContextMenus/, 'contextMenus usage is feature-detected');
+  // The message router must be OUTSIDE the guard so it always registers.
+  const guardIdx = bg.indexOf('hasContextMenus');
+  const routerIdx = bg.indexOf('browser.runtime.onMessage.addListener');
+  assert.ok(guardIdx > -1 && routerIdx > guardIdx, 'message router is registered regardless of contextMenus');
+});
+
+test('Tor build - picker recovers from stale tabs via reload + retry', () => {
+  const tree = buildTree();
+  const dash = tree.get(path.join('dashboard', 'dashboard.js')).toString('utf8');
+
+  assert.match(dash, /async function injectPickerAndStart\(/, 'injection + message delivery is factored out');
+  assert.match(dash, /function waitForTabComplete\(/, 'recovery waits for the tab to finish loading');
+  assert.match(dash, /await browser\.tabs\.reload\(tabId\)/, 'recovery reloads the stale tab');
+  assert.match(dash, /pickerReloadToEnable/, 'user is asked once before the reload');
+  // After a failed attempt the same message is retried — a dead-end alert
+  // alone is the historic "Select does nothing" bug.
+  assert.ok((dash.match(/injectPickerAndStart\(tabId, pickerMessage\)/g) || []).length >= 2,
+    'the picker start is attempted twice when the first attempt fails');
 });
 
 test('Tor build - no chrome.* API call anywhere in the generated JS', () => {

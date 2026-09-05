@@ -405,6 +405,64 @@ test('Tor build sources contain the picker fixes', () => {
   assert.match(dash, /lastAccessed/, 'tabs are ranked by recency');
 });
 
+test('Picker (both builds): input-field guard + Set-based shadow merge', () => {
+  const rootPicker = fs.readFileSync(path.join(ROOT, 'content', 'selector_picker.js'), 'utf8');
+  const torPicker = fs.readFileSync(path.join(TOR, 'content', 'selector_picker.js'), 'utf8');
+
+  for (const [label, src] of [['chrome-edge', rootPicker], ['tor', torPicker]]) {
+    assert.match(src, /isContentEditable/, `${label} picker guards editable targets in keydown`);
+    assert.match(src, /const seen = new Set\(\)/, `${label} picker merges shadow-DOM results with a Set (no O(n^2) includes)`);
+    assert.ok(!/out\.includes\(n\)/.test(src), `${label} picker no longer uses Array.includes in the merge`);
+  }
+});
+
+test('Tor build i18n keeps no Chrome-specific wording (audit fix B16)', () => {
+  const i18n = fs.readFileSync(path.join(TOR, 'lib', 'i18n.js'), 'utf8');
+  assert.ok(!i18n.includes('in Chrome.'), 'no "…in Chrome." wording on Tor');
+  assert.ok(!i18n.includes('In Chrome Extension mode'), 'no "Chrome Extension mode" wording on Tor');
+  assert.ok(i18n.includes('in Tor Browser.'), 'Tor wording is in place');
+  assert.ok(i18n.includes('(about:)'), 'system-page hint uses the about: scheme');
+});
+
+test('Picker keyboard: keys typed into page form fields are NOT swallowed', async () => {
+  const bus = createBus();
+  const page = bootPage(ROOT, 'chrome', bus);
+  const dash = bootDashboard(ROOT, 'chrome', bus, { tabFixture: standardTabFixture });
+  const doc = await openAddSelectorForm(dash.win);
+
+  // Give the page a normal text input the user might type into mid-pick.
+  const input = page.win.document.createElement('input');
+  input.id = 'page-search';
+  input.value = '';
+  page.win.document.body.appendChild(input);
+
+  doc.getElementById('btn-picker-select').click();
+  await sleep(100);
+  assert.equal(page.win.__webScraperPickerActive, true, 'picker armed');
+
+  // Type "p" and "Escape" INTO the page input — the picker must stay out of
+  // the way (audit fix B21): no Parent-expansion, no cancel, no preventDefault.
+  const kp = new page.win.KeyboardEvent('keydown', { key: 'p', bubbles: true, cancelable: true });
+  input.dispatchEvent(kp);
+  const ke = new page.win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  input.dispatchEvent(ke);
+  await sleep(50);
+
+  assert.equal(kp.defaultPrevented, false, 'p keystroke not swallowed');
+  assert.equal(ke.defaultPrevented, false, 'Escape in a page input does not cancel the picker');
+  assert.equal(page.win.__webScraperPickerActive, true, 'picker still armed after typing in page input');
+
+  // Contrast: the SAME keys on a non-editable target still drive the picker.
+  const eb = new page.win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  page.win.document.body.dispatchEvent(eb);
+  await sleep(50);
+  assert.equal(eb.defaultPrevented, true, 'Escape on body IS handled by the picker');
+  assert.equal(page.win.__webScraperPickerActive, false, 'picker cancelled from body');
+
+  dash.win.close();
+  page.win.close();
+});
+
 test('Storage + dashboard tolerate corrupt (null) sitemap entries', async () => {
   const bus = createBus();
   const dash = bootDashboard(ROOT, 'chrome', bus, { tabFixture: standardTabFixture });
