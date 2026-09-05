@@ -317,3 +317,54 @@ test('P1.4 - saving zero records is a valid (empty) state', async () => {
   assert.equal(header.chunkCount, 0);
   assert.deepEqual(await storage.getScrapedData('empty_site'), []);
 });
+
+test('P1.4 - deleteSitemap removes the record chunks too (no orphan leak)', async () => {
+  // Regression: clearScrapedData() deleted the chunk records but
+  // deleteSitemap() only removed the sitemap row and the data HEADER, so
+  // every chunk of a deleted sitemap stayed in IndexedDB forever — storage
+  // grew with each delete/re-create/re-scrape cycle and was never reclaimed.
+  const fake = makeFakeIDB();
+  const storage = freshStorage(fake);
+
+  await storage.saveSitemap({ _id: 'doomed', name: 'Doomed', startUrl: ['https://x.test/'] });
+  await storage.saveScrapedData('doomed', makeRecords(5000, 'gone')); // 3 chunks
+  const db = fake._databases.get('WebScraperDB');
+  assert.equal(
+    [...db.stores.get('scraped_data_chunks').data.keys()].filter((k) => k.startsWith('doomed__')).length,
+    3, 'three chunks written'
+  );
+
+  await storage.deleteSitemap('doomed');
+
+  assert.equal(await storage.getSitemap('doomed'), null, 'sitemap row removed');
+  assert.deepEqual(await storage.getScrapedData('doomed'), [], 'no data readable');
+  assert.equal(db.stores.get('scraped_data').data.has('doomed'), false, 'header removed');
+  assert.equal(
+    [...db.stores.get('scraped_data_chunks').data.keys()].filter((k) => k.startsWith('doomed__')).length,
+    0, 'every chunk removed with the sitemap'
+  );
+});
+
+test('P1.4 - deleteSitemap reclaims chunks even when the header is stale', async () => {
+  // A partially written pass can leave chunk records whose header claims a
+  // smaller chunkCount. The key union (index report + declared count) must
+  // still collect them all.
+  const fake = makeFakeIDB();
+  const storage = freshStorage(fake);
+  await storage.initPromise;
+  const db = fake._databases.get('WebScraperDB');
+
+  // Orphan chunks with no header at all.
+  db.stores.get('scraped_data_chunks').set('orphan__0', { chunkKey: 'orphan__0', sitemapId: 'orphan', chunkIndex: 0, records: makeRecords(2, 'o') });
+  // A header that under-reports the chunk count.
+  db.stores.get('scraped_data').set('stale', { sitemapId: 'stale', count: 4000, records: [], chunkCount: 1 });
+  db.stores.get('scraped_data_chunks').set('stale__0', { chunkKey: 'stale__0', sitemapId: 'stale', chunkIndex: 0, records: [] });
+  db.stores.get('scraped_data_chunks').set('stale__1', { chunkKey: 'stale__1', sitemapId: 'stale', chunkIndex: 1, records: [] });
+
+  await storage.deleteSitemap('orphan');
+  await storage.deleteSitemap('stale');
+
+  const left = [...db.stores.get('scraped_data_chunks').data.keys()];
+  assert.equal(left.filter((k) => k.startsWith('orphan__')).length, 0, 'index-found orphan removed');
+  assert.equal(left.filter((k) => k.startsWith('stale__')).length, 0, 'header-under-reported chunk removed too');
+});

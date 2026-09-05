@@ -246,24 +246,26 @@
       if (selectorStr === '_parent_' || selectorStr === '_self' || selectorStr === '.') {
         return context;
       }
-      const all = this.queryAll(context, selectorStr);
-      // Fast path: plain document order when nothing was pierced.
-      if (!this.shadowDom) {
-        try {
-          return context.querySelector(selectorStr);
-        } catch (e) {
-          console.warn(`Invalid CSS Selector "${selectorStr}":`, e);
-          return null;
-        }
-      }
-      // Prefer a light-DOM match first (original behaviour), then shadow hits.
+      // Cheap path FIRST: a plain querySelector answers the overwhelming
+      // majority of calls. This used to run queryAll() unconditionally up
+      // front — with shadowDom on (the default) that meant walking and merging
+      // every reachable shadow root for EVERY single-value field of EVERY
+      // item, only to throw the result away whenever a light-DOM match
+      // existed; with shadowDom off it ran the very same query twice.
+      // queryFirst is the hottest path in the engine, so the shadow merge is
+      // now only paid when the light DOM has no match.
+      let direct;
       try {
-        const direct = context.querySelector(selectorStr);
-        if (direct) return direct;
+        direct = context.querySelector(selectorStr);
       } catch (e) {
         console.warn(`Invalid CSS Selector "${selectorStr}":`, e);
         return null;
       }
+      if (direct) return direct;
+      if (!this.shadowDom) return null;
+      // Nothing in the light DOM — fall back to the pierced shadow results
+      // (original precedence: light DOM first, then shadow hits).
+      const all = this.queryAll(context, selectorStr);
       return all.length ? all[0] : null;
     }
 

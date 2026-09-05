@@ -23,19 +23,18 @@
         requestInterval: 1000,
         pageLoadDelay: 1000,
         maxPages: 500,
-        concurrency: 1,
         requestRetries: 0,        // Ö3: extra attempts per failed page (exponential backoff)
         maxDepth: 0,              // Ö3: 0 = unlimited link depth
         includeUrlPatterns: [],   // Ö3: glob list; empty = follow everything
         excludeUrlPatterns: [],   // Ö3: glob list; matching URLs are never enqueued
+        // P1.3: how many pages may be in flight at once (1 = serial, the
+        // historic behaviour). Capped at 8.
+        concurrency: 1,
         // P1.1: when a click selector has "discard initial elements" on, the
         // content script tags pre-click container matches with
         // data-ws-initial; the engine then drops them so only click-loaded
         // content becomes a record.
         discardInitialElements: false,
-        // P1.3: how many pages may be in flight at once (1 = serial, the
-        // historic behaviour). Capped at 8.
-        concurrency: 1,
         // P1.3: per-request timeout in ms (0 = disabled). A hung page used
         // to stall the whole crawl forever; now the request fails, goes
         // through the normal retry/backoff path, and eventually is logged
@@ -98,10 +97,13 @@
 
     /**
      * Default DOM fetcher using fetch() and DOMParser (usable in browser or node test environments with jsdom)
+     * `options.signal` (P1.3) lets a per-request timeout actually cancel the
+     * underlying fetch instead of merely racing it.
      */
-    async defaultFetcher(url) {
+    async defaultFetcher(url, options) {
       if (typeof window !== 'undefined' && window.DOMParser) {
-        const response = await fetch(url);
+        const fetchOpts = (options && options.signal) ? { signal: options.signal } : undefined;
+        const response = await fetch(url, fetchOpts);
         if (!response.ok) {
           throw new Error(`HTTP error ${response.status}: ${response.statusText} for ${url}`);
         }
@@ -355,19 +357,29 @@
      * thrown inside fetchWithRetry, so timed-out requests go through the
      * same retry/backoff path as any other failure; after the last attempt
      * the page is logged as an error and the crawl continues.
+     *
+     * The fetcher also receives `{ signal }` (an AbortController signal) so a
+     * timed-out request is really CANCELLED, not just raced. Without this a
+     * hung page kept its background tab, its network request and its
+     * tab-event listeners alive for the rest of the browser session —
+     * every timeout leaked one tab.
      */
     async fetchWithTimeout(fetcher, url) {
       const timeout = parseInt(this.options.requestTimeout, 10) || 0;
-      if (timeout <= 0) return fetcher(url);
+      if (timeout <= 0) return fetcher(url, {});
+
+      const controller = (typeof AbortController === 'function') ? new AbortController() : null;
       let timer = null;
       try {
         return await Promise.race([
-          fetcher(url),
+          fetcher(url, controller ? { signal: controller.signal } : {}),
           new Promise((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error(`Request timed out after ${timeout}ms: ${url}`)),
-              timeout
-            );
+            timer = setTimeout(() => {
+              if (controller) {
+                try { controller.abort(); } catch (e) { /* already settled */ }
+              }
+              reject(new Error(`Request timed out after ${timeout}ms: ${url}`));
+            }, timeout);
           })
         ]);
       } finally {
@@ -521,20 +533,31 @@
     /**
      * P3.10: asks the (per-origin cached) robots policy whether the URL may
      * be crawled. Non-http(s) URLs and fetch failures always pass.
+     *
+     * This must NEVER throw: it is awaited on the worker's hot path, outside
+     * the per-page try/catch, so an escaping exception used to reject the
+     * worker promise, tear down the whole pool and end the crawl — a single
+     * odd URL could abort a run of thousands of pages.
      */
     async _robotsAllows(url) {
       if (typeof Robots === 'undefined' || !Robots) return true;
-      let parsed;
-      try { parsed = new URL(url); } catch (e) { return true; }
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return true;
-      const origin = parsed.origin;
-      if (!this._robotsRules) this._robotsRules = new Map();
-      let rules = this._robotsRules.get(origin);
-      if (rules === undefined) {
-        rules = await Robots.fetchRules(origin);
-        this._robotsRules.set(origin, rules);
+      try {
+        let parsed;
+        try { parsed = new URL(url); } catch (e) { return true; }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return true;
+        const origin = parsed.origin;
+        if (!this._robotsRules) this._robotsRules = new Map();
+        let rules = this._robotsRules.get(origin);
+        if (rules === undefined) {
+          rules = await Robots.fetchRules(origin);
+          this._robotsRules.set(origin, rules);
+        }
+        return Robots.isAllowed(url, rules, this.options.robotsUserAgent || '*') !== false;
+      } catch (e) {
+        // Robots policy is advisory — on any internal failure, allow the URL
+        // rather than killing the crawl.
+        return true;
       }
-      return Robots.isAllowed(url, rules, this.options.robotsUserAgent || '*');
     }
 
     /**

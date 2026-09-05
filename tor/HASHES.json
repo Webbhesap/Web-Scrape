@@ -21,7 +21,7 @@
     },
     {
       "path": "content/scraper_content.js",
-      "sha256": "74954c8bd25077cfc291145e1d53e5e0fde35950f59ca062a83c71fb4f0f133d"
+      "sha256": "8aaf0643802fba6dddd04954497b32f309b5412920edf7476600f8aa2384ed87"
     },
     {
       "path": "content/selector_picker.css",
@@ -37,11 +37,11 @@
     },
     {
       "path": "dashboard/dashboard.html",
-      "sha256": "c7f76fd5d423f00043deedbdac00fd964760ad5bbcff6195eb0bf97d7f8c0e87"
+      "sha256": "965f6313b00527d21a5fd30954d510956571a21193580d8e55753fb7b0d4207d"
     },
     {
       "path": "dashboard/dashboard.js",
-      "sha256": "a7d0c307630da4d64f4d12ed18bc73249ea8a115f6b104db5a992bb50eba6c31"
+      "sha256": "b8231b87f93f5bcb486b511d352e62f12eeea0eb79e4b582e699c760bde6368b"
     },
     {
       "path": "devtools/devtools.html",
@@ -57,7 +57,7 @@
     },
     {
       "path": "devtools/panel.html",
-      "sha256": "b2ca947799418516068258907d52c9c0d598d78b3c7c2a58b4fea2383897c255"
+      "sha256": "9894f2f6930b7e38a86363ce8eeed512893b4425c0e0205ebf768d70b458ab56"
     },
     {
       "path": "icons/icon.svg",
@@ -85,7 +85,7 @@
     },
     {
       "path": "lib/csv.js",
-      "sha256": "79e6c51f2ae01505179e9a1a820ab1b5d4c286d4da1f977040d150f4a037d201"
+      "sha256": "e24b6e990add2bdea3c95553ad45a803260b3cfbd755eab72594e0757bdf122c"
     },
     {
       "path": "lib/datamode.js",
@@ -93,11 +93,11 @@
     },
     {
       "path": "lib/download_manager.js",
-      "sha256": "7efa474fdd8c4b63e05aa4d4c516a6befa043434f89a7444dca1bd7ec28159c6"
+      "sha256": "3a02cd97064da574f7ff02f192bb376736e68c1eac9c0f716fc039666ed4510c"
     },
     {
       "path": "lib/i18n.js",
-      "sha256": "8c65dc1c3c01a4945a042ec294a506f89eaddfee01653717ea90c1e663fe83cc"
+      "sha256": "b4baaf23d93ca0ab1438ec392ae3dbcd3080838a638f08fab643f4d198dfba0c"
     },
     {
       "path": "lib/icons.js",
@@ -105,7 +105,7 @@
     },
     {
       "path": "lib/robots.js",
-      "sha256": "8d1f74bc495794c1275ec911d95fd768434c58b04e0b71b0b5a796782324568d"
+      "sha256": "17277cc3edd16750bb1a4872572a1b1c3ad4382874010afc5d28a2a5406244d3"
     },
     {
       "path": "lib/sitemap_diff.js",
@@ -117,7 +117,7 @@
     },
     {
       "path": "lib/transforms.js",
-      "sha256": "e1b5380f44c0b7e4c14cdb2563d09c45c1f606abfa8f76c65a839aa55c621d25"
+      "sha256": "6b4f930149b625c6686cbbf59fd79a994720df9a6f61448b52889d5d4fa5eddb"
     },
     {
       "path": "lib/undo_stack.js",
@@ -125,11 +125,11 @@
     },
     {
       "path": "lib/xlsx.js",
-      "sha256": "ae0e949efa105fc43d3e19aab65dbd2a17370ca41916fb684be1d7bb2b5963f9"
+      "sha256": "136a752743092648787b8c36cdfb40a0846929c5c8a1e2de7dc02fd5bf2a7341"
     },
     {
       "path": "lib/zip.js",
-      "sha256": "c3caf39ad694500207ff5443f99eddc8f8c8b23dbe18f780192af44c2798a3c9"
+      "sha256": "14625fd5b891c6f3f7879a9ce9cfa6fabeb5c9db93e40f5fdee79293dd3d42ee"
     },
     {
       "path": "manifest.json",
@@ -149,39 +149,39 @@
     },
     {
       "path": "src/engine/CssSelectorGenerator.js",
-      "sha256": "cd2677d5dbb662c4c30ca842b27e07653af860975c6c73719b83bd1524986d75"
+      "sha256": "b7337070c87052276b110da0ec3665d64d8300523fc472c4ad12f2964b776a00"
     },
     {
       "path": "src/engine/DataFlattener.js",
-      "sha256": "05cb33e16e2661287ef13961a91d10294ef7dfd780f7654fb3bfd26552b1ee9d"
+      "sha256": "be5c1bac6f9f72aca61f0b889a8278fa338636040bff9cc51d66d62a7745f7af"
     },
     {
       "path": "src/engine/ScraperEngine.js",
-      "sha256": "0e650944d844387c2d06921a46fbffbb3395bed7d7f0a4de5d57578cc1bc7861"
+      "sha256": "ec9a9439592b9bb471cb95355869822eccc817596bd8a49e46d78cb652925fac"
     },
     {
       "path": "src/engine/SelectorEngine.js",
-      "sha256": "73341fce053fb101fa35792260395e7b60e401103ca8594681828bc76b766c3d"
+      "sha256": "97ee378fbb9785ed3d17d1accdd5c80c879fc1a0c8c8666fe2ab600b439d02b1"
     },
     {
       "path": "src/engine/UrlRangeExpander.js",
-      "sha256": "b2d709d019b8345dfab30565f611a9742fab2cf9739490918570eb1759a9408f"
+      "sha256": "69fe1e69c17d1ed5225c7f4d37b6578181d6f1d0418f6c9b8a6002fbe3e0127d"
     },
     {
       "path": "src/export/Exporter.js",
-      "sha256": "0ea57a508eb2b1fe3261b0674292795e94091fc96e8f142dc8b6f23c37d358ad"
+      "sha256": "29ec8b7b14e9d1b546c15368ecc167fa4233b5a7f235cbc5ae3c70d49bfeddc7"
     },
     {
       "path": "src/models/Selector.js",
-      "sha256": "b385eadd81c56482a8d61abb3e10e986d7988db6e4bf20a600e92b83828f8dc3"
+      "sha256": "685bca3c286209ce59fcafa6a540ac244328873dfe7e932182b7cf23556d31c5"
     },
     {
       "path": "src/models/Sitemap.js",
-      "sha256": "21fc1e1f31d8dd4ca8080ea67af13f55c0432e0855b26a7dca5bfcc06f88a507"
+      "sha256": "d05d1be5cef0eefc34d79f56a4c86be121ed96ad36b184304a2663c65b9c9895"
     },
     {
       "path": "src/storage/Storage.js",
-      "sha256": "787ab513b0af729a4766a707e18a4552bdc507ff536b99be827ad41fd609f5d8"
+      "sha256": "1d6fd175cf1cae9019e851862ac72c8d219124bb932ec4ad32a942c13b3cceb1"
     },
     {
       "path": "src/ui/SelectorGraph.js",

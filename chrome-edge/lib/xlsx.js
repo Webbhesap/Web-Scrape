@@ -27,7 +27,7 @@
 
   function generateExcelXml(data, sheetName) {
     sheetName = sheetName || 'Scraped Data';
-    sheetName = sheetName.replace(/[:\\/?*\[\]]/g, '_').substring(0, 31);
+    sheetName = sheetName.replace(/[:\\/?*[\]]/g, '_').substring(0, 31);
 
     let headers = [];
     let rows = [];
@@ -149,7 +149,7 @@
     const SimpleZipLib = resolveZip();
     if (!SimpleZipLib) throw new Error('SimpleZip is not available');
 
-    sheetName = (sheetName || 'Scraped Data').replace(/[:\\/?*\[\]]/g, '_').substring(0, 31);
+    sheetName = (sheetName || 'Scraped Data').replace(/[:\\/?*[\]]/g, '_').substring(0, 31);
 
     let headers = [];
     let rows = [];

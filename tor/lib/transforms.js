@@ -25,16 +25,38 @@
 
   const TRANSFORM_TYPES = ['trim', 'lowercase', 'uppercase', 'capitalize', 'number', 'regexReplace'];
 
-  /** Parses localized numbers: handles 1,234.56 / 1.234,56 / currency marks. */
+  /**
+   * Parses localized numbers: handles 1,234.56 / 1.234,56 / currency marks.
+   *
+   * This is the SINGLE number parser of the codebase. The export path used to
+   * carry its own copy with different heuristics, so the very same cell could
+   * be read as 1.234 by a `number` transform and as 1234 by a CSV export — a
+   * 1000x discrepancy on real data (and "1.234.567" was rejected by one and
+   * accepted by the other).
+   *
+   * Heuristics:
+   *  - whitespace (incl. NBSP / narrow NBSP) and currency symbols are
+   *    stripped anywhere in the value
+   *  - when extra text remains ("1.234,56 TL", "ca. 5 €"), the first run that
+   *    looks like a formatted number is used
+   *  - both separators present: the LAST one is the decimal separator
+   *    ("1.234,56" -> 1234.56, "1,234.56" -> 1234.56)
+   *  - a separator appearing 2+ times is a grouping separator
+   *    ("1.234.567" -> 1234567)
+   *  - a single separator with a 1-2 digit tail is decimal ("99,90" -> 99.9);
+   *    a 3-digit tail is grouping ("1,234" -> 1234)
+   *  - grouping groups must be exactly 3 digits ("1.2.3" is rejected)
+   */
   function parseNumber(raw) {
     if (raw === null || raw === undefined) return null;
-    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
 
     let s = String(raw).trim();
     if (!s) return null;
 
     // Strip currency symbols, NBSP and regular spaces anywhere in the value.
     s = s.replace(/[\s\u00A0\u202F]/g, '').replace(/[$€£₺¥₹]/g, '');
+    if (!s) return null;
 
     // When the value carries extra text ("1.234,56 TL", "ca. 5 €"), pull out
     // the first run that looks like a formatted number.
@@ -43,36 +65,56 @@
       if (!m) return null;
       s = m[0];
     }
-    if (!/[\d]/.test(s)) return null;
+    if (!/\d/.test(s)) return null;
 
-    const lastComma = s.lastIndexOf(',');
-    const lastDot = s.lastIndexOf('.');
+    let sign = '';
+    if (s[0] === '+' || s[0] === '-') { sign = s[0]; s = s.slice(1); }
 
-    if (lastComma === -1 && lastDot === -1) {
+    const commas = s.split(',').length - 1;
+    const dots = s.split('.').length - 1;
+    if (commas === 0 && dots === 0) {
       // Plain integer.
-      return parseInt(s, 10);
+      const plain = Number(sign + s);
+      return Number.isFinite(plain) ? plain : null;
     }
 
-    // Decide which separator is the decimal one (the LAST one to appear),
-    // then treat the other (repeated) separator as thousands grouping.
-    let decimalSep;
-    if (lastComma === -1) decimalSep = '.';
-    else if (lastDot === -1) decimalSep = ',';
-    else decimalSep = lastComma > lastDot ? ',' : '.';
+    let decimalSep = null;
+    let groupingSep = null;
+    if (commas > 0 && dots > 0) {
+      decimalSep = s.lastIndexOf(',') > s.lastIndexOf('.') ? ',' : '.';
+      groupingSep = decimalSep === ',' ? '.' : ',';
+    } else if (commas >= 2) {
+      groupingSep = ',';
+    } else if (dots >= 2) {
+      groupingSep = '.';
+    } else {
+      const sep = commas === 1 ? ',' : '.';
+      const tail = s.slice(s.lastIndexOf(sep) + 1);
+      if (/^\d{1,2}$/.test(tail)) {
+        decimalSep = sep;
+      } else if (/^\d{3}$/.test(tail)) {
+        groupingSep = sep;
+      } else {
+        return null; // e.g. "1.2345" — ambiguous, not a formatted number
+      }
+    }
 
-    const groupingSep = decimalSep === ',' ? '.' : ',';
-    const parts = s.split(decimalSep);
-    if (parts.length > 2) return null; // e.g. "1.2.3" — not a number
+    const intSegment = decimalSep ? s.slice(0, s.lastIndexOf(decimalSep)) : s;
+    const fracSegment = decimalSep ? s.slice(s.lastIndexOf(decimalSep) + 1) : '';
 
-    const intPart = parts[0].split(groupingSep).join('');
-    let fracPart = parts[1] || '';
-    // Grouping separators must wrap groups of three digits (5.000 or 5,000);
-    // tolerate minor deviations but reject obviously non-numeric leftovers.
-    if (!/^[+-]?\d*$/.test(intPart) || !/^\d*$/.test(fracPart)) return null;
-    if (!intPart && !fracPart) return null;
+    // Grouping separators must wrap groups of exactly three digits.
+    if (groupingSep) {
+      const groups = intSegment.split(groupingSep);
+      for (let i = 0; i < groups.length; i++) {
+        if (!/^\d+$/.test(groups[i]) || (i > 0 && groups[i].length !== 3)) return null;
+      }
+    } else if (!/^\d+$/.test(intSegment)) {
+      return null;
+    }
+    if (!/^\d*$/.test(fracSegment) || (!intSegment && !fracSegment)) return null;
 
-    const normalized = (intPart || '0') + (fracPart ? '.' + fracPart : '');
-    const n = Number(normalized);
+    const intDigits = groupingSep ? intSegment.split(groupingSep).join('') : intSegment;
+    const n = Number(sign + intDigits + (fracSegment ? '.' + fracSegment : ''));
     return Number.isFinite(n) ? n : null;
   }
 

@@ -64,9 +64,13 @@
       }
 
       if (Array.isArray(node.children) && node.children.length > 0) {
-        // Recurse into children
+        // Recurse into children. Appended with a loop, NOT `push(...childRows)`:
+        // spreading a large array passes every row as a separate argument and
+        // blows the call stack (RangeError) — measured to throw at ~200k rows,
+        // which a big nested-container scrape can easily reach. Same class of
+        // bug as the Math.min(...nums) fix in the dashboard stats bar.
         const childRows = flattenRecordTree(node.children, currentData, currentMeta);
-        flatRows.push(...childRows);
+        for (let i = 0; i < childRows.length; i++) flatRows.push(childRows[i]);
       } else {
         // Leaf record!
         const row = {

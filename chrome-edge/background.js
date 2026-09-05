@@ -1,12 +1,19 @@
 /**
  * Web Scraper Background Service Worker (Manifest V3).
+ *
+ * NOTE: this worker deliberately imports nothing. It used to import the
+ * storage module without ever using it — and that module instantiates itself
+ * on load, which reads the ENTIRE extension store (`storage.local.get(null)`):
+ * a full deserialize of every scraped record of every sitemap, on every single
+ * service-worker wake (context-menu click, every runtime message, …). The
+ * result was thrown away. Sample-sitemap seeding still happens where it is
+ * actually needed — when the dashboard loads. The Firefox/Tor event page keeps
+ * the storage script in its manifest `background.scripts` (see
+ * tools/build_tor.js); that shape is unrelated to this file and is locked by
+ * test/tor_build.test.js.
  */
 
-importScripts(
-  'src/storage/Storage.js'
-);
-
-chrome.runtime.onInstalled.addListener(async (details) => {
+chrome.runtime.onInstalled.addListener((details) => {
   console.log('Web Scraper extension installed/updated:', details.reason);
 
   try {

@@ -112,14 +112,36 @@
       anchored = true;
       path = path.slice(0, -1);
     }
-    const source = path.replace(/[.+?^{}()[\]|\\]/g, '\\$&').replace(/\*/g, '.*');
+    // `$` is escaped everywhere EXCEPT the trailing anchor stripped above, so a
+    // literal dollar sign inside a path ("/price$usd") can no longer become a
+    // mid-pattern end-anchor that silently never matches anything.
+    const source = path.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
     return new RegExp('^' + source + (anchored ? '$' : ''));
   }
 
   /**
+   * Percent-decodes a pathname without ever throwing: decodeURIComponent
+   * raises URIError on malformed escapes ("/%zz"), and that exception used to
+   * escape isAllowed(), reject the engine worker and abort the whole crawl.
+   */
+  function safeDecodePath(pathname) {
+    try {
+      return decodeURIComponent(pathname);
+    } catch (e) {
+      return pathname;
+    }
+  }
+
+  /**
    * Decides whether `url` may be crawled under the given rules.
-   * Longest matching path wins; a tie goes to Disallow.
+   * Longest matching path wins; a tie goes to Disallow (RFC 9309 §2.2.3).
    * rules === null → everything allowed.
+   *
+   * Single pass on purpose: the previous implementation walked the ruleset
+   * TWICE — once to compute a `best` match whose `allowed` field was never
+   * read, once to make the real decision — recompiling every path regex on
+   * the second walk. Compiled regexes are now memoized per path because the
+   * same ruleset is consulted for every URL of an origin.
    */
   function isAllowed(url, rules, userAgent) {
     if (!rules) return true;
@@ -127,47 +149,38 @@
     try { u = new URL(url); } catch (e) { return true; } // unparseable → don't block
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
 
-    const path = decodeURIComponent(u.pathname) + (u.search || '');
+    const path = safeDecodePath(u.pathname) + (u.search || '');
     const ruleset = rulesForAgent(rules, userAgent);
     if (ruleset.length === 0) return true;
 
-    let best = null; // { length, allowed, regexp }
+    const compiled = isAllowed._regexCache || (isAllowed._regexCache = new Map());
+
+    let matchedLen = -1;
+    let allowedAtLongest = true;
     for (const rule of ruleset) {
-      if (!rule.path) {
-        // "Disallow:" with empty value == allow-all marker.
-        if (!best || 0 > best.length) best = { length: 0, allowed: true, regexp: null };
-        continue;
-      }
-      let re;
-      try { re = pathToRegExp(rule.path); } catch (e) { continue; }
-      if (re.test(path)) {
-        const len = rule.path.length;
-        if (!best || len > best.length) {
-          best = { length: len, allowed: rule.type === 'allow', regexp: re };
+      // An empty path ("Disallow:" with no value) is the allow-all marker: it
+      // matches every URL at length 0, so it only decides the outcome when no
+      // concrete rule matched.
+      const len = rule.path ? rule.path.length : 0;
+      if (rule.path) {
+        let re;
+        if (compiled.has(rule.path)) {
+          re = compiled.get(rule.path);
+        } else {
+          try { re = pathToRegExp(rule.path); } catch (e) { re = null; }
+          compiled.set(rule.path, re);
         }
+        if (!re || !re.test(path)) continue;
+      }
+      if (len > matchedLen) {
+        matchedLen = len;
+        allowedAtLongest = rule.type === 'allow';
+      } else if (len === matchedLen && rule.type === 'disallow') {
+        allowedAtLongest = false; // tie at equal specificity → Disallow wins
       }
     }
-    if (!best) return true;
-    if (best.regexp === null) return true;
-    // Tie-break rule: when the longest allow and longest disallow match at
-    // the SAME length, Disallow wins (RFC 9309 §2.2.3).
-    let longestLen = -1;
-    let disallowAtLongest = false;
-    for (const rule of ruleset) {
-      if (!rule.path) continue;
-      let re;
-      try { re = pathToRegExp(rule.path); } catch (e) { continue; }
-      if (re.test(path)) {
-        const len = rule.path.length;
-        if (len > longestLen) {
-          longestLen = len;
-          disallowAtLongest = rule.type === 'disallow';
-        } else if (len === longestLen && rule.type === 'disallow') {
-          disallowAtLongest = true;
-        }
-      }
-    }
-    return !disallowAtLongest;
+
+    return allowedAtLongest;
   }
 
   /**

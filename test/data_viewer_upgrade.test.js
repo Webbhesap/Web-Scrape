@@ -220,3 +220,39 @@ test('Data viewer - Copy CSV respects hidden columns', async () => {
   assert.ok(!/qty/.test(copied.split('\n')[0]), 'hidden column not in the CSV header');
   assert.match(copied.split('\n')[0], /price/);
 });
+
+test('Data viewer - header union covers columns the first row does not have', async () => {
+  // Regression: the table header was built from Object.keys(filteredData[0]),
+  // so any column missing from the FIRST row was invisible in the viewer (and
+  // therefore also absent from the stats bar and the column popover) even
+  // though thousands of other rows carried it.
+  const { win } = boot();
+  const doc = win.document;
+  await sleep(150);
+
+  await win.AppStorage.saveScrapedData('viewer', [
+    { 'web-scraper-order': '1', name: 'first' },
+    { 'web-scraper-order': '2', name: 'second', price: '5', qty: 3 },
+    { 'web-scraper-order': '3', name: 'third', price: '7' }
+  ]);
+
+  const row = Array.from(doc.querySelectorAll('#tbody-sitemaps tr')).find((tr) => tr.textContent.includes('viewer'));
+  assert.ok(row, 'sitemap listed');
+  row.querySelector('.action-browse').click();
+  await sleep(120);
+
+  const headers = Array.from(doc.querySelectorAll('#thead-scraped-data tr:first-child th')).map((th) => th.textContent);
+  assert.ok(headers.some((h) => h.startsWith('price')), 'price column rendered: ' + headers.join('|'));
+  assert.ok(headers.some((h) => h.startsWith('qty')), 'qty column rendered: ' + headers.join('|'));
+
+  // The cell that lacks the value renders empty rather than shifting columns.
+  const rows = Array.from(doc.querySelectorAll('#tbody-scraped-data tr'));
+  const priceIdx = headers.findIndex((h) => h.startsWith('price'));
+  assert.equal(rows[0].children[priceIdx].textContent, '', 'missing value is an empty cell');
+  assert.equal(rows[1].children[priceIdx].textContent, '5', 'values stay in their own column');
+
+  // Stats only consider rows that actually carry a number.
+  const bar = doc.getElementById('data-stats-bar');
+  assert.match(bar.textContent, /price/, 'price summarized');
+  assert.match(bar.textContent, /n=2/, 'two numeric values, not three');
+});

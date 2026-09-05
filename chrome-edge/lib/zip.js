@@ -42,10 +42,29 @@
   }
 
   async function build(files) {
+    const list = Array.isArray(files) ? files : [];
+    // The classic ZIP end-of-central-directory record stores the entry count
+    // and the offsets as 16/32-bit integers. Past 65535 entries (or a 4 GiB
+    // archive) those fields silently wrap and the resulting file is corrupt —
+    // every extractor reports "unexpected end of archive" with no hint about
+    // the real cause. Fail loudly instead: a gallery ZIP of a large scrape can
+    // genuinely reach these limits.
+    if (list.length > 0xFFFF) {
+      throw new Error(`Too many files for a single ZIP archive: ${list.length} (max 65535). Split the selection into smaller batches.`);
+    }
+    let totalBytes = 0;
+    for (const file of list) {
+      const size = (file && file.data) ? (file.data.byteLength !== undefined ? file.data.byteLength : file.data.length) : 0;
+      totalBytes += size;
+    }
+    if (totalBytes > 0xFFFFFFFF) {
+      throw new Error(`Archive too large for the ZIP format: ${totalBytes} bytes (max 4 GiB). Split the selection into smaller batches.`);
+    }
+
     const locals = [];
     const centrals = [];
     let offset = 0;
-    for (const file of files) {
+    for (const file of list) {
       const name = strToBytes(file.name.replace(/\\/g, '/'));
       const data = file.data instanceof Uint8Array ? file.data : new Uint8Array(file.data);
       const crc = crc32(data);
@@ -65,7 +84,7 @@
     }
     const centralDir = concat(centrals);
     const end = concat([
-      u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(0x06054b50), u16(0), u16(0), u16(list.length), u16(list.length),
       u32(centralDir.length), u32(offset), u16(0)
     ]);
     return concat([...locals, centralDir, end]);

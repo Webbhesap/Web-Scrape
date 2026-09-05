@@ -3,9 +3,21 @@
  * Supports all Web Scraper selector types.
  */
 (function (root, factory) {
-  const result = factory();
+  // lib/transforms.js is a HARD dependency: the constructor normalizes the
+  // transform pipeline through it. It used to be reached through a bare-global
+  // typeof probe, which made normalization depend on script load order — load
+  // Selector.js first and invalid steps such as {type:'BOGUS'} or a
+  // regexReplace without `find` silently survived into storage and were then
+  // applied at scrape time.
+  let TextTransforms = null;
+  if (typeof module === 'object' && module.exports && typeof require === 'function') {
+    try { TextTransforms = require('../../lib/transforms.js'); } catch (e) { TextTransforms = null; }
+  }
+  if (!TextTransforms && root && root.TextTransforms) TextTransforms = root.TextTransforms;
+
+  const result = factory(TextTransforms);
   if (typeof define === 'function' && define.amd) {
-    define([], () => result);
+    define(['../../lib/transforms.js'], () => result);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = result;
   }
@@ -14,7 +26,7 @@
     root.Selector = result.Selector;
     root.Selector.SELECTOR_TYPES = result.SELECTOR_TYPES;
   }
-}(typeof self !== 'undefined' ? self : this, function () {
+}(typeof self !== 'undefined' ? self : this, function (TextTransforms) {
   'use strict';
 
   const SELECTOR_TYPES = {
@@ -175,6 +187,7 @@
         clickElementUniquenessType: 'uniqueHTMLText', // uniqueText | uniqueHTMLText | uniqueCSSSelector | uniqueHTML
         discardInitialElements: false,
         clickDelay: 1000,
+        maxClicks: 50,
         delay: 0,
         multiple: true
       }
@@ -228,7 +241,7 @@
 
       // Local post-processing pipeline (see lib/transforms.js). Transforms
       // are stored in application order; defaultValue fills empty results.
-      if (typeof TextTransforms !== 'undefined' && TextTransforms && TextTransforms.normalizeTransforms) {
+      if (TextTransforms && typeof TextTransforms.normalizeTransforms === 'function') {
         this.transforms = TextTransforms.normalizeTransforms(data.transforms);
       } else {
         this.transforms = Array.isArray(data.transforms) ? data.transforms : [];
@@ -265,6 +278,10 @@
         this.clickElementUniquenessType = data.clickElementUniquenessType || 'uniqueHTMLText';
         this.discardInitialElements = data.discardInitialElements === true;
         this.clickDelay = parseInt(data.clickDelay, 10) || 1000;
+        // Safety ceiling for the clickMore loop. Clamped to 1..200 here AND in
+        // the content script, so a hand-edited sitemap cannot start a runaway
+        // "load more" loop that hangs the crawl.
+        this.maxClicks = Math.min(200, Math.max(1, parseInt(data.maxClicks, 10) || 50));
       } else if (this.type === 'SelectorElementScroll') {
         this.scrollElementSelector = data.scrollElementSelector || '';
         this.scrollDelay = parseInt(data.scrollDelay, 10) || 1000;
@@ -278,7 +295,7 @@
       const errors = [];
       if (!this.id) {
         errors.push('Selector ID is required.');
-      } else if (!/^[a-zA-Z0-9_\-]+$/.test(this.id)) {
+      } else if (!/^[a-zA-Z0-9_-]+$/.test(this.id)) {
         errors.push('Selector ID must contain only alphanumeric characters, underscores, and dashes.');
       } else if (this.id === '_root') {
         errors.push('Selector ID cannot be "_root".');
@@ -346,6 +363,7 @@
         obj.clickElementUniquenessType = this.clickElementUniquenessType;
         obj.discardInitialElements = this.discardInitialElements;
         obj.clickDelay = this.clickDelay;
+        obj.maxClicks = this.maxClicks;
       } else if (this.type === 'SelectorElementScroll') {
         obj.scrollElementSelector = this.scrollElementSelector;
         obj.scrollDelay = this.scrollDelay;

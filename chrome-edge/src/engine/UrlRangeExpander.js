@@ -26,7 +26,7 @@
     if (!url || typeof url !== 'string') return [];
     
     // Find all brackets [...]
-    const regex = /\[([^\[\]]+)\]/g;
+    const regex = /\[([^[\]]+)\]/g;
     let match;
     let lastIndex = 0;
 

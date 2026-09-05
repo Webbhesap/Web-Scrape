@@ -398,13 +398,21 @@
       }
 
       if (this.db) {
+        // P1.4: the record chunks live in their own store — deleting only the
+        // header left every chunk of a deleted sitemap behind forever (the
+        // same orphan leak clearScrapedData() explicitly guards against), so
+        // storage kept growing with each delete/re-scrape cycle.
+        const chunkKeys = await this._chunkKeysFor(sitemapId);
         await new Promise((resolve) => {
           try {
-            const tx = this.db.transaction([STORE_SITEMAPS, STORE_DATA], 'readwrite');
+            const tx = this.db.transaction([STORE_SITEMAPS, STORE_DATA, STORE_DATA_CHUNKS], 'readwrite');
             tx.objectStore(STORE_SITEMAPS).delete(sitemapId);
             tx.objectStore(STORE_DATA).delete(sitemapId);
+            const chunkStore = tx.objectStore(STORE_DATA_CHUNKS);
+            for (const key of chunkKeys) chunkStore.delete(key);
             tx.oncomplete = () => resolve();
             tx.onerror = () => resolve();
+            tx.onabort = () => resolve();
           } catch (e) {
             resolve();
           }
@@ -608,6 +616,26 @@
       });
     }
 
+    /**
+     * P1.4: every chunk key that belongs to a sitemap — the union of what the
+     * `bySitemap` index reports and what the header's `chunkCount` claims, so
+     * neither a stale header nor a partially written pass can leave orphaned
+     * chunk records behind. Shared by deleteSitemap() and clearScrapedData().
+     */
+    async _chunkKeysFor(sitemapId) {
+      const keys = new Set();
+      try {
+        const entry = await this._rawGetScrapedDataIDB(sitemapId);
+        const declared = (entry && parseInt(entry.chunkCount, 10) > 0) ? parseInt(entry.chunkCount, 10) : 0;
+        for (let i = 0; i < declared; i++) keys.add(`${sitemapId}__${i}`);
+      } catch (e) { /* header unreadable — the index pass below still applies */ }
+      try {
+        const chunks = await this._rawGetDataChunksIDB(sitemapId);
+        for (const c of chunks) if (c && c.chunkKey) keys.add(c.chunkKey);
+      } catch (e) { /* index unreadable */ }
+      return Array.from(keys);
+    }
+
     async _saveScrapedDataIDB(sitemapId, records) {
       const list = Array.isArray(records) ? records : [];
       const header = {
@@ -787,9 +815,9 @@
       if (this.db) {
         // P1.4: remove the header AND the record chunks (otherwise a
         // cleared sitemap would leak orphaned chunks forever).
-        const chunks = await this._rawGetDataChunksIDB(sitemapId);
+        const chunkKeys = await this._chunkKeysFor(sitemapId);
         await this._idbDelete(STORE_DATA, sitemapId);
-        await this._idbDeleteMany(STORE_DATA_CHUNKS, chunks.map((c) => c.chunkKey));
+        await this._idbDeleteMany(STORE_DATA_CHUNKS, chunkKeys);
         return true;
       }
 

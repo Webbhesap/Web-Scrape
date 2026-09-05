@@ -80,8 +80,12 @@
   function parse(csvText, options) {
     options = options || {};
     const delimiter = options.delimiter || ',';
+    // Must mirror unparse(): a custom quoteChar written by unparse has to be
+    // readable back, otherwise stringify/parse is not a round-trip.
+    const quote = options.quoteChar || '"';
+    const quoteLen = quote.length;
     const header = options.header !== false;
-    
+
     if (csvText.charCodeAt(0) === 0xFEFF) {
       csvText = csvText.slice(1);
     }
@@ -93,29 +97,46 @@
 
     for (let i = 0; i < csvText.length; i++) {
       const char = csvText[i];
-      const nextChar = csvText[i + 1];
 
-      if (char === '"') {
-        if (insideQuotes && nextChar === '"') {
-          currentCell += '"';
-          i++; // skip next quote
+      if (insideQuotes) {
+        if (csvText.startsWith(quote, i)) {
+          if (csvText.startsWith(quote, i + quoteLen)) {
+            currentCell += quote; // doubled quote = literal quote
+            i += 2 * quoteLen - 1;
+          } else {
+            insideQuotes = false; // closing quote
+            i += quoteLen - 1;
+          }
         } else {
-          insideQuotes = !insideQuotes;
+          currentCell += char;
         }
-      } else if (char === delimiter && !insideQuotes) {
+        continue;
+      }
+
+      if (csvText.startsWith(quote, i)) {
+        insideQuotes = true;
+        i += quoteLen - 1;
+        continue;
+      }
+
+      if (char === delimiter) {
         currentRow.push(currentCell);
         currentCell = '';
-      } else if ((char === '\r' || char === '\n') && !insideQuotes) {
-        if (char === '\r' && nextChar === '\n') {
-          i++;
+        continue;
+      }
+
+      if (char === '\r' || char === '\n') {
+        if (char === '\r' && csvText[i + 1] === '\n') {
+          i++; // skip the \n of a CRLF pair
         }
         currentRow.push(currentCell);
         rows.push(currentRow);
         currentRow = [];
         currentCell = '';
-      } else {
-        currentCell += char;
+        continue;
       }
+
+      currentCell += char;
     }
 
     if (currentCell.length > 0 || currentRow.length > 0) {

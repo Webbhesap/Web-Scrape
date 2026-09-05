@@ -18,7 +18,7 @@
     if (typeof CSS !== 'undefined' && CSS.escape) {
       return CSS.escape(str);
     }
-    return String(str).replace(/([ #;?%&,.+*~\':"!^$[\]()=>|\/@])/g, '\\$1');
+    return String(str).replace(/([ #;?%&,.+*~':"!^$[\]()=>|/@])/g, '\\$1');
   }
 
   // Ignore dynamic, utility, or active classes that change state

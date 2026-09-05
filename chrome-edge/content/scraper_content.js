@@ -14,6 +14,58 @@
     return new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
   }
 
+  /**
+   * Minimal CSS path for an element — the `uniqueCSSSelector` identity used by
+   * clickElementUniquenessType. Walks up to the nearest meaningful id.
+   */
+  function cssPathFor(el) {
+    const parts = [];
+    let cur = el;
+    while (cur && cur.nodeType === 1 && cur !== document.documentElement) {
+      const tag = cur.tagName.toLowerCase();
+      if (cur.id) {
+        parts.unshift(`${tag}#${cur.id}`);
+        break;
+      }
+      let part = tag;
+      const parent = cur.parentElement;
+      if (parent) {
+        const sameTag = Array.from(parent.children).filter((c) => c.tagName === cur.tagName);
+        if (sameTag.length > 1) part += `:nth-of-type(${sameTag.indexOf(cur) + 1})`;
+      }
+      parts.unshift(part);
+      cur = parent;
+    }
+    return parts.join(' > ');
+  }
+
+  /**
+   * Identity of a click target according to the selector's
+   * `clickElementUniquenessType` (uniqueText | uniqueHTMLText | uniqueCSSSelector
+   * | uniqueHTML).
+   *
+   * Element IDENTITY is not usable here: frameworks routinely REPLACE the
+   * "load more" node on every click, so a Set of element references either
+   * lets the same logical button be clicked forever, or — when the node is
+   * stable — makes the second pass find "nothing left to click" and stop
+   * after a single click. That was the clickMore bug this replaces. The
+   * option was persisted, exported and imported but never actually read.
+   */
+  function uniquenessSignature(el, type) {
+    const text = ((el.innerText || el.textContent || '') + '').replace(/\s+/g, ' ').trim();
+    switch (type) {
+      case 'uniqueText':
+        return text;
+      case 'uniqueHTML':
+        return el.outerHTML || '';
+      case 'uniqueCSSSelector':
+        return cssPathFor(el);
+      case 'uniqueHTMLText':
+      default:
+        return `${text}\u0000${el.innerHTML || ''}`;
+    }
+  }
+
   async function handleClickSelector(selectorConfig) {
     const clickSelector = selectorConfig.clickElementSelector;
     if (!clickSelector) {
@@ -23,6 +75,7 @@
     }
     const clickType = selectorConfig.clickType || 'clickMore';
     const clickDelay = selectorConfig.clickDelay || 1000;
+    const uniquenessType = selectorConfig.clickElementUniquenessType || 'uniqueHTMLText';
     // Hard safety cap: the dashboard can lower it per selector, but never
     // above this ceiling (a runaway "load more" loop would hang the crawl).
     const maxClicks = Math.min(parseInt(selectorConfig.maxClicks, 10) || 50, 200);
@@ -54,17 +107,39 @@
     }
 
     let clickCount = 0;
-    const clickedElements = new Set();
+    const clickedSignatures = new Set();
+    // clickMore ends when the page stops growing, NOT when the button node has
+    // been seen before (that is the whole point of "click until no more").
+    const domSize = () => {
+      try { return document.getElementsByTagName('*').length; } catch (e) { return 0; }
+    };
+    let lastSize = domSize();
+    let stableRounds = 0;
 
     while (clickCount < maxClicks) {
-      const buttons = Array.from(document.querySelectorAll(clickSelector)).filter(b => {
-        return b.offsetParent !== null && !clickedElements.has(b);
-      });
+      let visible;
+      try {
+        visible = Array.from(document.querySelectorAll(clickSelector))
+          .filter((b) => b.offsetParent !== null);
+      } catch (e) {
+        break; // invalid selector — nothing clickable
+      }
+      if (visible.length === 0) break;
 
-      if (buttons.length === 0) break;
-
-      const targetBtn = buttons[0];
-      clickedElements.add(targetBtn);
+      let targetBtn;
+      if (clickType === 'clickOnce') {
+        // "Click each button once": walk the candidates and take the first one
+        // whose signature has not been clicked yet. The previous code broke
+        // out of the loop after the very first click, so only one of N tabs
+        // was ever opened.
+        targetBtn = visible.find((b) => !clickedSignatures.has(uniquenessSignature(b, uniquenessType)));
+        if (!targetBtn) break;
+      } else {
+        // "Click until no more buttons": the same control is re-clicked on
+        // purpose; the growth check below decides when to stop.
+        targetBtn = visible[0];
+      }
+      clickedSignatures.add(uniquenessSignature(targetBtn, uniquenessType));
 
       targetBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
       await sleep(100);
@@ -77,9 +152,18 @@
       clickCount++;
       await sleep(clickDelay);
 
-      if (clickType === 'clickOnce') {
-        break;
+      if (clickType === 'clickOnce') continue;
+
+      const size = domSize();
+      if (size <= lastSize) {
+        // Nothing new loaded. Require two consecutive stable rounds so a
+        // slow response (still in flight) does not end the loop early.
+        stableRounds++;
+        if (stableRounds >= 2) break;
+      } else {
+        stableRounds = 0;
       }
+      lastSize = size;
     }
 
     return { clicksDone: clickCount, initialMarked: initialMarked };

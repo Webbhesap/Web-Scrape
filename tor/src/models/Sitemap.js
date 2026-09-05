@@ -39,7 +39,7 @@
 
     s = s.toLowerCase()
       .replace(/[\s\t\r\n]+/g, '_')
-      .replace(/[^a-z0-9_\-]/g, '_')
+      .replace(/[^a-z0-9_-]/g, '_')
       .replace(/_{2,}/g, '_')
       .replace(/^_+|_+$/g, '');
 
@@ -351,7 +351,7 @@
         for (const key of [
           'linkType', 'downloadImage', 'tableHeaderRowSelector', 'tableDataRowSelector', 'columns',
           'extractAttribute', 'outerHTML', 'delimiter', 'paginationType', 'maxPages',
-          'clickElementSelector', 'clickType', 'clickElementUniquenessType', 'clickDelay', 'discardInitialElements',
+          'clickElementSelector', 'clickType', 'clickElementUniquenessType', 'clickDelay', 'maxClicks', 'discardInitialElements',
           'scrollElementSelector', 'scrollDelay', 'maxScrolls'
         ]) {
           if (sel[key] !== undefined) clean[key] = sel[key];
@@ -363,12 +363,34 @@
         ? data.options
         : {};
 
+      // P2.4: per-column CSV types must survive an export -> import round
+      // trip. toJSON() writes them, so dropping them here silently reset every
+      // column back to plain text whenever a sitemap was re-imported (the same
+      // class of loss as the clickElementUniquenessType fix).
+      const columnTypes = [];
+      if (Array.isArray(data.columnTypes)) {
+        for (const ct of data.columnTypes) {
+          if (!ct || typeof ct !== 'object') continue;
+          if (typeof ct.name !== 'string' || !ct.name) continue;
+          if (ct.type === 'number') {
+            columnTypes.push({ name: ct.name, type: 'number' });
+          } else if (ct.type === 'date') {
+            columnTypes.push({
+              name: ct.name,
+              type: 'date',
+              format: (typeof ct.format === 'string' && ct.format) ? ct.format : 'YYYY-MM-DD'
+            });
+          }
+        }
+      }
+
       return {
         _id: rawId || name,
         name: name,
         startUrl: startUrls,
         selectors: selectors,
-        options: options
+        options: options,
+        columnTypes: columnTypes
       };
     }
 

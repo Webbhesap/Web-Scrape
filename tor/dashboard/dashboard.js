@@ -190,6 +190,7 @@
     elements.fieldClickElementSel = document.getElementById('field-click-element-sel');
     elements.fieldClickType = document.getElementById('field-click-type');
     elements.fieldClickDelay = document.getElementById('field-click-delay');
+    elements.fieldClickMaxClicks = document.getElementById('field-click-max-clicks');
     elements.fieldClickDiscardInitial = document.getElementById('field-click-discard-initial');
     elements.optScroll = document.getElementById('opt-scroll');
     elements.fieldScrollElementSel = document.getElementById('field-scroll-element-sel');
@@ -1071,6 +1072,7 @@
       elements.fieldClickElementSel.value = sel.clickElementSelector || '';
       elements.fieldClickType.value = sel.clickType || 'clickMore';
       elements.fieldClickDelay.value = sel.clickDelay || 1000;
+      if (elements.fieldClickMaxClicks) elements.fieldClickMaxClicks.value = sel.maxClicks || 50;
       elements.fieldClickDiscardInitial.checked = sel.discardInitialElements === true;
     } else if (sel.type === 'SelectorElementScroll') {
       elements.fieldScrollElementSel.value = sel.scrollElementSelector || '';
@@ -1165,6 +1167,9 @@
       selData.clickElementSelector = elements.fieldClickElementSel.value.trim();
       selData.clickType = elements.fieldClickType.value;
       selData.clickDelay = parseInt(elements.fieldClickDelay.value, 10) || 1000;
+      // Clamped to the same 1..200 window the model and the content script
+      // enforce, so the UI cannot start a runaway "load more" loop.
+      selData.maxClicks = Math.min(200, Math.max(1, parseInt(elements.fieldClickMaxClicks ? elements.fieldClickMaxClicks.value : '', 10) || 50));
       selData.discardInitialElements = elements.fieldClickDiscardInitial.checked;
     } else if (selData.type === 'SelectorElementScroll') {
       selData.scrollElementSelector = elements.fieldScrollElementSel.value.trim();
@@ -1479,7 +1484,7 @@
 
     const raw = elements.fieldSitemapUrls.value || '';
     const lines = raw.split('\n').map(u => u.trim()).filter(Boolean);
-    const hasRange = lines.some(u => /\[[^\[\]]+\]/.test(u));
+    const hasRange = lines.some(u => /\[[^[\]]+\]/.test(u));
 
     if (!lines.length || !hasRange) {
       box.style.display = 'none';
@@ -1859,13 +1864,24 @@
     return box;
   }
 
-  function renderSitemapDiff(diff) {
+  function renderSitemapDiff(diff, baseLabel) {
     const result = document.getElementById('diff-result');
     const summary = document.getElementById('diff-summary');
     const body = document.getElementById('diff-body');
     if (!result || !summary || !body) return;
     body.innerHTML = '';
     summary.innerHTML = '';
+
+    // Name the base version the result was computed against. runSitemapDiff
+    // already knew this (file name or saved-sitemap name) but never passed it
+    // on, so the user saw a list of changes with no indication of WHICH
+    // version they were relative to.
+    if (baseLabel) {
+      const base = document.createElement('div');
+      base.textContent = t('diffBaseLabel', { name: baseLabel });
+      base.style.cssText = 'font-size:12px; color:var(--text-muted); margin-bottom:8px;';
+      summary.appendChild(base);
+    }
 
     if (diff.identical) {
       const b = document.createElement('span');
@@ -1949,7 +1965,7 @@
 
     const diff = SitemapDiff.compareSitemaps(base, state.currentSitemap);
     if (!diff) { alert(t('diffInvalidJson')); return; }
-    renderSitemapDiff(diff);
+    renderSitemapDiff(diff, baseLabel);
   }
 
   async function cloneSitemap(sitemapId) {
@@ -2128,8 +2144,20 @@
       logScrape(t('scrapeVisiting', { n: data.queueLength, url: data.url }), 'info');
     });
 
+    // One `recordScraped` event fires per ROW, so a 100k-record crawl used to
+    // perform 100k separate DOM writes on the same text node. Coalesce them
+    // into at most one write per animation frame (the counter is authoritative
+    // again on pageComplete / statusChange / finish regardless).
+    let recordMetricQueued = false;
+    const flushRecordMetric = () => {
+      recordMetricQueued = false;
+      if (elements.metricRecords) elements.metricRecords.textContent = engine.results.length;
+    };
     engine.on('recordScraped', () => {
-      elements.metricRecords.textContent = engine.results.length;
+      if (recordMetricQueued) return;
+      recordMetricQueued = true;
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(flushRecordMetric);
+      else setTimeout(flushRecordMetric, 16);
     });
 
     engine.on('retry', (info) => {
@@ -2434,9 +2462,12 @@
       };
     }
 
-    // Default fetch & DOMParser fallback
-    return async (url) => {
-      const resp = await fetch(url);
+    // Default fetch & DOMParser fallback. Honours the engine's AbortSignal so
+    // a per-request timeout cancels the network request instead of letting it
+    // run to completion in the background.
+    return async (url, runOpts) => {
+      const signal = runOpts && runOpts.signal;
+      const resp = await fetch(url, signal ? { signal } : undefined);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       const html = await resp.text();
       const parser = new DOMParser();
@@ -2510,12 +2541,36 @@
   }
 
   // DATA VIEWER & EXPORT CONTROLLER
+
+  /**
+   * Trailing-edge debounce. The global search box re-filters, re-sorts and
+   * re-renders the WHOLE dataset on every `input` event; without a debounce
+   * typing into a 100k-row scrape ran that full pipeline once per keystroke
+   * and the box fell visibly behind the user.
+   */
+  function debounce(fn, wait) {
+    let timer = null;
+    const wrapped = function () {
+      const args = arguments;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; fn.apply(null, args); }, wait);
+    };
+    wrapped.cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    wrapped.flush = () => { if (timer) { clearTimeout(timer); timer = null; fn(); } };
+    return wrapped;
+  }
+
   function bindDataViewerEvents() {
     loadHiddenColumns();
 
-    elements.searchDataInput.addEventListener('input', () => {
+    const debouncedSearch = debounce(() => {
       state.dataPagination.page = 1;
       filterAndRenderDataTable();
+    }, 200);
+    elements.searchDataInput.addEventListener('input', debouncedSearch);
+    // Enter must not wait for the timer — users expect an immediate filter.
+    elements.searchDataInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); debouncedSearch.flush(); }
     });
 
     // Ö5: column visibility popover
@@ -2990,28 +3045,67 @@
     switchView('browse-data');
   }
 
-  /** True when at least 80% of non-empty values in the column are numbers. */
-  function isNumericColumn(rows, col) {
-    let numbers = 0;
-    let total = 0;
-    for (const row of rows) {
-      const v = row[col];
-      if (v === undefined || v === null || v === '') continue;
-      total++;
-      if (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.trim().replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, ''))))) {
-        numbers++;
-      }
-    }
-    return total > 0 && (numbers / total) >= 0.8;
-  }
-
   function toSortableNumber(v) {
-    if (typeof v === 'number') return v;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
     if (typeof v === 'string') {
       const cleaned = v.trim().replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.');
       if (cleaned !== '' && /^-?\d+(\.\d+)?$/.test(cleaned)) return Number(cleaned);
     }
     return null;
+  }
+
+  // Derived view data — the header union plus the per-column numeric summary
+  // — is a pure function of the filtered rows, but renderDataTablePage() runs
+  // on every page change, every column toggle and (through the search box) on
+  // every keystroke. It used to re-walk the whole dataset twice per numeric
+  // column each time, so paging through a 100k-row scrape re-scanned all 100k
+  // rows per click. Compute it in ONE pass and cache it against the identity
+  // of the filtered array (which is replaced, never mutated, on every filter
+  // or sort change).
+  let derivedCache = null; // { rows, headers, stats }
+
+  function computeDerivedData(rows) {
+    const headers = [];
+    const seenCols = new Set();
+    const stats = new Map();
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      for (const key of Object.keys(row)) {
+        // Header UNION across rows: reading the keys of row[0] only (as the
+        // table header used to) silently dropped every column that the first
+        // row happened not to carry.
+        if (!seenCols.has(key)) {
+          seenCols.add(key);
+          headers.push(key);
+          stats.set(key, { numeric: 0, nonEmpty: 0, n: 0, sum: 0, min: null, max: null });
+        }
+        const st = stats.get(key);
+        const raw = row[key];
+        if (raw === undefined || raw === null || raw === '') continue;
+        st.nonEmpty++;
+        const n = toSortableNumber(raw);
+        if (n === null) continue;
+        st.numeric++;
+        st.n++;
+        st.sum += n;
+        if (st.min === null || n < st.min) st.min = n;
+        if (st.max === null || n > st.max) st.max = n;
+      }
+    }
+    return { rows: rows, headers: headers, stats: stats };
+  }
+
+  function derivedData() {
+    const rows = Array.isArray(state.filteredData) ? state.filteredData : [];
+    if (!derivedCache || derivedCache.rows !== rows) {
+      derivedCache = computeDerivedData(rows);
+    }
+    return derivedCache;
+  }
+
+  /** True when at least 80% of the column's non-empty values parse as numbers. */
+  function isNumericColumn(st) {
+    return !!st && st.nonEmpty > 0 && (st.numeric / st.nonEmpty) >= 0.8 && st.n > 0;
   }
 
   /** Loads/saves the hidden-column selection for the browser session. */
@@ -3053,28 +3147,20 @@
   function renderDataStatsBar(headers) {
     const bar = document.getElementById('data-stats-bar');
     if (!bar) return;
+    // Reads the single-pass summary computed by derivedData() — this function
+    // no longer touches the rows at all, so re-rendering the stats bar on a
+    // page change is O(visible columns) instead of O(rows × columns).
+    const stats = derivedData().stats;
+    const hidden = new Set(state.dataHiddenCols);
     const parts = [];
     for (const h of headers) {
-      if (state.dataHiddenCols.includes(h)) continue;
-      if (!isNumericColumn(state.filteredData, h)) continue;
-      const nums = state.filteredData
-        .map((r) => toSortableNumber(r[h]))
-        .filter((n) => n !== null);
-      if (!nums.length) continue;
-      // Plain loops — Math.min(...nums) spreads every value as an argument
-      // and blows the call stack (RangeError) on large datasets.
-      let min = nums[0];
-      let max = nums[0];
-      let sum = 0;
-      for (const n of nums) {
-        sum += n;
-        if (n < min) min = n;
-        if (n > max) max = n;
-      }
+      if (hidden.has(h)) continue;
+      const st = stats.get(h);
+      if (!isNumericColumn(st)) continue;
       parts.push(
         `<span style="margin-right:14px;"><strong style="color:#2dd4bf;">${escapeHtml(h)}</strong> · ` +
-        `n=${nums.length} · Σ=${formatStatNumber(sum)} · x̄=${formatStatNumber(sum / nums.length)} · ` +
-        `min=${formatStatNumber(min)} · max=${formatStatNumber(max)}</span>`
+        `n=${st.n} · Σ=${formatStatNumber(st.sum)} · x̄=${formatStatNumber(st.sum / st.n)} · ` +
+        `min=${formatStatNumber(st.min)} · max=${formatStatNumber(st.max)}</span>`
       );
     }
     bar.style.display = parts.length ? 'block' : 'none';
@@ -3173,8 +3259,9 @@
       return;
     }
 
-    const allHeaders = Object.keys(state.filteredData[0]);
-    const headers = allHeaders.filter((h) => !state.dataHiddenCols.includes(h));
+    const allHeaders = derivedData().headers;
+    const hiddenSet = new Set(state.dataHiddenCols);
+    const headers = allHeaders.filter((h) => !hiddenSet.has(h));
 
     renderDataStatsBar(allHeaders);
 
@@ -3275,9 +3362,19 @@
       input.addEventListener('input', () => {
         state.dataColumnFilters[h] = input.value;
         state.dataPagination.page = 1;
+        // Remember where the caret was: the whole header row is rebuilt below,
+        // so a bare focus() dropped the caret at the END of the value and
+        // editing in the middle of a filter text was impossible.
+        const caret = input.selectionStart;
+        const caretEnd = input.selectionEnd;
         filterAndRenderDataTable();
         const again = elements.theadScrapedData.querySelector(`[data-col-filter="${cssAttrEscape(h)}"]`);
-        if (again) again.focus();
+        if (again) {
+          again.focus();
+          try {
+            if (typeof caret === 'number') again.setSelectionRange(caret, typeof caretEnd === 'number' ? caretEnd : caret);
+          } catch (e) { /* input type without selection support */ }
+        }
       });
       input.setAttribute('data-col-filter', h);
       cell.appendChild(input);
@@ -3792,7 +3889,7 @@
       base = base.substring(0, dot);
     }
     if (!/^[a-z0-9]{2,5}$/.test(ext)) ext = 'jpg';
-    base = base.replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
+    base = base.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '');
     if (!base) base = 'image-' + String((index || 0) + 1).padStart(3, '0');
     return base + '.' + ext;
   }

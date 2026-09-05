@@ -243,3 +243,40 @@ test('P3.11 - diff view compares saved sitemaps and uploaded JSON', async () => 
 
   win.close();
 });
+
+test('P3.11 - diff result names the base version it was computed against', async () => {
+  // Regression: runSitemapDiff() already knew the base label (uploaded file
+  // name, or the saved sitemap's name) but stored it in a variable that was
+  // never used — the result showed a list of changes with no indication of
+  // WHICH version they were relative to.
+  const { win } = bootDashboard();
+  const doc = win.document;
+
+  await createSitemap(win, 'label_base');
+  await createSitemap(win, 'label_cur');
+
+  doc.getElementById('nav-sitemap-diff').click();
+  await sleep(30);
+
+  // Saved-sitemap base: the label comes from the sitemap name/id.
+  doc.getElementById('diff-base-select').value = 'label_base';
+  doc.getElementById('btn-diff-run').click();
+  await sleep(60);
+  const summaryText = doc.getElementById('diff-summary').textContent;
+  assert.ok(/label_base/.test(summaryText), 'saved base named in the summary: ' + summaryText);
+  assert.ok(/Base version|Baz sürüm/.test(summaryText), 'label is localized: ' + summaryText);
+
+  // Uploaded-file base: the label is the file name.
+  const curJson = JSON.stringify(await win.AppStorage.getSitemap('label_cur'));
+  const fileInput = doc.getElementById('diff-file-input');
+  const fakeFile = Object.create(win.File ? win.File.prototype : Object.prototype);
+  Object.defineProperty(fakeFile, 'name', { value: 'upload_v7.json' });
+  fakeFile.text = async () => curJson;
+  Object.defineProperty(fileInput, 'files', { value: [fakeFile], configurable: true });
+  doc.getElementById('btn-diff-run').click();
+  await sleep(60);
+  const summaryText2 = doc.getElementById('diff-summary').textContent;
+  assert.ok(/upload_v7\.json/.test(summaryText2), 'uploaded file named in the summary: ' + summaryText2);
+
+  win.close();
+});
