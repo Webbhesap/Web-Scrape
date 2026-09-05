@@ -79,6 +79,10 @@
             <span class="icon-code"></span>
             <span data-i18n="exportSitemap">Export sitemap</span>
           </a>
+          <a class="dropdown-item" id="nav-sitemap-diff">
+            <span class="icon-code"></span>
+            <span data-i18n="versionDiff">Version diff</span>
+          </a>
           <div class="dropdown-divider"></div>
           <a class="dropdown-item" id="nav-sitemap-save-template">
             <span class="icon-save"></span>
@@ -947,6 +951,37 @@
       </div>
     </section>
 
+    <!-- VIEW: Sitemap Version Diff -->
+    <section class="view-panel" id="view-sitemap-diff">
+      <div class="card" style="max-width: 900px; margin: 0 auto; width: 100%;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon-code"></span>
+            <span data-i18n="diffTitle">Sitemap version diff</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-diff-back" type="button" data-i18n="backToSelectors">Back</button>
+        </div>
+        <div class="card-body">
+          <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+            <div style="flex:1; min-width:200px;">
+              <label class="form-label" for="diff-base-select" data-i18n="diffBase">Compare with (base version)</label>
+              <select id="diff-base-select" class="form-control"></select>
+              <div class="form-help" data-i18n="diffBaseHelp">Pick another saved sitemap as the base, or upload a sitemap JSON below.</div>
+            </div>
+            <div style="flex:1; min-width:220px;">
+              <label class="form-label" for="diff-file-input" data-i18n="diffUpload">Or upload a sitemap JSON (base)</label>
+              <input type="file" id="diff-file-input" accept=".json,application/json" class="form-control">
+            </div>
+            <button class="btn btn-primary" id="btn-diff-run" type="button" data-i18n="diffRun">Compare</button>
+          </div>
+          <div id="diff-result" style="display:none;">
+            <div id="diff-summary" style="margin-bottom:12px;"></div>
+            <div id="diff-body"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- VIEW: Selector Hierarchy Graph -->
     <section class="view-panel" id="view-selector-graph" style="height: calc(100vh - 80px);">
       <div class="card" style="height: 100%; display: flex; flex-direction: column;">
@@ -1037,6 +1072,7 @@
   <script src="../src/engine/SelectorEngine.js"></script>
   <script src="../src/engine/DataFlattener.js"></script>
   <script src="../lib/robots.js"></script>
+  <script src="../lib/sitemap_diff.js"></script>
   <script src="../src/engine/ScraperEngine.js"></script>
   <script src="../src/storage/Storage.js"></script>
   <script src="../src/export/Exporter.js"></script>

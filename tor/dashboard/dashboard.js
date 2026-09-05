@@ -141,6 +141,7 @@
       'browse-data': document.getElementById('view-browse-data'),
       gallery: document.getElementById('view-gallery'),
       'export-data': document.getElementById('view-export-data'),
+      'sitemap-diff': document.getElementById('view-sitemap-diff'),
       'selector-graph': document.getElementById('view-selector-graph')
     };
 
@@ -329,6 +330,7 @@
     if (navGallery) navGallery.addEventListener('click', () => openGallery());
     document.getElementById('nav-sitemap-export-data').addEventListener('click', () => switchView('export-data'));
     document.getElementById('nav-sitemap-export-json').addEventListener('click', () => openExportSitemap());
+    document.getElementById('nav-sitemap-diff').addEventListener('click', () => openSitemapDiff());
     document.getElementById('nav-sitemap-delete').addEventListener('click', () => deleteCurrentSitemap());
     document.getElementById('nav-sitemap-save-template').addEventListener('click', () => saveCurrentSitemapAsTemplate());
 
@@ -339,6 +341,12 @@
     document.getElementById('btn-add-selector').addEventListener('click', () => openAddSelector());
     document.getElementById('btn-view-graph').addEventListener('click', () => switchView('selector-graph'));
     document.getElementById('btn-back-to-selectors').addEventListener('click', () => switchView('selectors'));
+
+    // P3.11: sitemap version diff controls.
+    const btnDiffRun = document.getElementById('btn-diff-run');
+    if (btnDiffRun) btnDiffRun.addEventListener('click', () => { runSitemapDiff(); });
+    const btnDiffBack = document.getElementById('btn-diff-back');
+    if (btnDiffBack) btnDiffBack.addEventListener('click', () => switchView('selectors'));
   }
 
   function switchView(viewName) {
@@ -1786,6 +1794,162 @@
     if (!state.currentSitemap) return;
     elements.fieldExportJson.value = JSON.stringify(state.currentSitemap.toJSON(), null, 2);
     switchView('sitemap-export');
+  }
+
+  // P3.11 — sitemap version diff (compare(sitemapA, sitemapB), pure fn in
+  // lib/sitemap_diff.js). The CURRENT sitemap is the "to" side; the base is
+  // either another saved sitemap or an uploaded JSON file.
+  function openSitemapDiff() {
+    if (!state.currentSitemap) return;
+    const sel = document.getElementById('diff-base-select');
+    if (!sel) return;
+    // Populate with the other saved sitemaps (current one excluded).
+    const others = (state.sitemaps || []).filter((s) => s && s._id && s._id !== state.currentSitemap._id);
+    sel.innerHTML = '';
+    if (others.length === 0) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = t('diffNoOther');
+      sel.appendChild(o);
+    }
+    for (const s of others) {
+      const o = document.createElement('option');
+      o.value = s._id;
+      o.textContent = s.name || s._id;
+      sel.appendChild(o);
+    }
+    const fileInput = document.getElementById('diff-file-input');
+    if (fileInput) fileInput.value = '';
+    const result = document.getElementById('diff-result');
+    if (result) result.style.display = 'none';
+    switchView('sitemap-diff');
+  }
+
+  function diffValue(v) {
+    if (v === null || v === undefined) return '∅';
+    if (typeof v === 'string') return v;
+    try { return JSON.stringify(v); } catch (e) { return String(v); }
+  }
+
+  function appendDiffRow(container, mark, label, detail) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; gap:8px; padding:3px 0; font-size:12px; border-bottom:1px solid var(--border-color);';
+    const m = document.createElement('span');
+    m.textContent = mark;
+    m.style.cssText = 'font-weight:700; width:14px; flex:0 0 14px; ' +
+      (mark === '+' ? 'color:#4ade80;' : mark === '-' ? 'color:#f87171;' : 'color:#facc15;');
+    const lab = document.createElement('span');
+    lab.textContent = label;
+    lab.style.cssText = 'min-width:120px; flex:0 0 120px; color:var(--text-muted);';
+    const det = document.createElement('span');
+    det.textContent = detail;
+    det.style.cssText = 'word-break:break-word;';
+    row.appendChild(m); row.appendChild(lab); row.appendChild(det);
+    container.appendChild(row);
+  }
+
+  function diffSection(body, title) {
+    const h = document.createElement('div');
+    h.textContent = title;
+    h.style.cssText = 'font-weight:600; margin:14px 0 4px; color:#2dd4bf;';
+    body.appendChild(h);
+    const box = document.createElement('div');
+    box.style.cssText = 'font-family:var(--font-mono);';
+    body.appendChild(box);
+    return box;
+  }
+
+  function renderSitemapDiff(diff) {
+    const result = document.getElementById('diff-result');
+    const summary = document.getElementById('diff-summary');
+    const body = document.getElementById('diff-body');
+    if (!result || !summary || !body) return;
+    body.innerHTML = '';
+    summary.innerHTML = '';
+
+    if (diff.identical) {
+      const b = document.createElement('span');
+      b.textContent = t('diffIdentical');
+      b.style.cssText = 'background:rgba(74,222,128,0.15); color:#4ade80; padding:6px 12px; border-radius:6px; font-weight:600;';
+      summary.appendChild(b);
+      result.style.display = 'block';
+      return;
+    }
+    const s = diff.summary;
+    const badge = (n, color, label) => {
+      const el = document.createElement('span');
+      el.textContent = `${label}: ${n}`;
+      el.style.cssText = `background:${color}22; color:${color}; padding:4px 10px; border-radius:6px; font-size:12px; margin-right:8px; font-weight:600;`;
+      summary.appendChild(el);
+    };
+    badge(s.added, '#4ade80', t('diffAdded'));
+    badge(s.removed, '#f87171', t('diffRemoved'));
+    badge(s.changed, '#facc15', t('diffChanged'));
+
+    if (diff.name) {
+      const box = diffSection(body, t('diffName'));
+      appendDiffRow(box, '~', 'name', `${diff.name.from || '∅'}  →  ${diff.name.to || '∅'}`);
+    }
+    if (diff.startUrls.added.length || diff.startUrls.removed.length) {
+      const box = diffSection(body, t('diffStartUrls'));
+      diff.startUrls.removed.forEach((u) => appendDiffRow(box, '-', 'url', u));
+      diff.startUrls.added.forEach((u) => appendDiffRow(box, '+', 'url', u));
+    }
+    const sel = diff.selectors;
+    if (sel.added.length || sel.removed.length || sel.changed.length) {
+      const box = diffSection(body, t('diffSelectors'));
+      sel.removed.forEach((x) => appendDiffRow(box, '-', `#${x.id}`, `${x.type || ''} ${x.selector || ''}`.trim()));
+      sel.added.forEach((x) => appendDiffRow(box, '+', `#${x.id}`, `${x.type || ''} ${x.selector || ''}`.trim()));
+      sel.changed.forEach((c) => {
+        const fields = Object.keys(c.changes).map((f) =>
+          `${f}: ${diffValue(c.changes[f].from)} → ${diffValue(c.changes[f].to)}`).join(';  ');
+        appendDiffRow(box, '~', `#${c.id}`, fields);
+      });
+      if (sel.unchangedCount) {
+        const note = document.createElement('div');
+        note.textContent = t('diffUnchanged', { n: sel.unchangedCount });
+        note.style.cssText = 'font-size:11px; color:var(--text-muted); margin-top:4px;';
+        box.appendChild(note);
+      }
+    }
+    if (diff.options.changed.length) {
+      const box = diffSection(body, t('diffOptions'));
+      diff.options.changed.forEach((c) => appendDiffRow(box, '~', c.key, `${diffValue(c.from)} → ${diffValue(c.to)}`));
+    }
+    if (diff.columnTypes.changed.length) {
+      const box = diffSection(body, t('diffColumnTypes'));
+      diff.columnTypes.changed.forEach((c) => appendDiffRow(box, '~', c.name, `${diffValue(c.from)} → ${diffValue(c.to)}`));
+    }
+    result.style.display = 'block';
+  }
+
+  async function runSitemapDiff() {
+    if (!state.currentSitemap || typeof SitemapDiff === 'undefined') return;
+    const fileInput = document.getElementById('diff-file-input');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    let base = null;
+    let baseLabel = '';
+
+    if (file) {
+      try {
+        const text = await file.text();
+        base = JSON.parse(text);
+        baseLabel = file.name;
+      } catch (e) {
+        alert(t('diffInvalidJson'));
+        return;
+      }
+    } else {
+      const selId = document.getElementById('diff-base-select').value;
+      if (!selId) { alert(t('diffPickBase')); return; }
+      base = await AppStorage.getSitemap(selId);
+      if (!base) { alert(t('diffPickBase')); return; }
+      baseLabel = base.name || selId;
+    }
+
+    const diff = SitemapDiff.compareSitemaps(base, state.currentSitemap);
+    if (!diff) { alert(t('diffInvalidJson')); return; }
+    renderSitemapDiff(diff);
   }
 
   async function cloneSitemap(sitemapId) {
