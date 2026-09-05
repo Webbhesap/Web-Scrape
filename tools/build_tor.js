@@ -35,6 +35,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const ROOT = path.resolve(__dirname, '..');
 // Chrome/Edge source tree (tests and tooling stay at the repository root).
@@ -837,7 +838,17 @@ function assertNoChromeApi(files) {
 function buildTree() {
   const files = new Map();
 
-  files.set('manifest.json', Buffer.from(buildManifest(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'))));
+  // P4.13: validate BOTH manifests inside the build — the source chrome
+  // manifest and the GENERATED tor manifest (schema + field whitelist).
+  const { validateManifestFile, validateManifest } = require('./validate_manifest.js');
+  for (const p of validateManifestFile(path.join(SRC, 'manifest.json'))) {
+    throw new Error('chrome-edge/manifest.json schema error: ' + p);
+  }
+  const torManifest = buildManifest(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
+  for (const p of validateManifest(JSON.parse(torManifest))) {
+    throw new Error('generated tor/manifest.json schema error: ' + p);
+  }
+  files.set('manifest.json', Buffer.from(torManifest));
   files.set('README.md', Buffer.from(buildReadme()));
 
   for (const rel of COPY_FILES) {
@@ -859,6 +870,25 @@ function buildTree() {
   }
 
   assertNoChromeApi(files);
+
+  // P4.12: file-based hash snapshot of the whole tree (the "tor hash
+  // denetimi"). HASHES.json is part of the generated tree, so `--check`
+  // verifies both the content AND the committed hashes in one pass.
+  const hashEntries = [];
+  for (const rel of [...files.keys()].sort()) {
+    hashEntries.push({
+      path: rel,
+      sha256: crypto.createHash('sha256').update(files.get(rel)).digest('hex')
+    });
+  }
+  const manifest = {
+    generatedBy: 'tools/build_tor.js',
+    note: 'SHA-256 of every file in tor/ except this manifest. Regenerate with: npm run build:tor',
+    fileCount: hashEntries.length,
+    files: hashEntries
+  };
+  files.set('HASHES.json', Buffer.from(JSON.stringify(manifest, null, 2) + '\n'));
+
   return files;
 }
 

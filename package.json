@@ -5,12 +5,13 @@
   "private": true,
   "scripts": {
     "test": "node --test test/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=chrome-edge/src/**/*.js --test-coverage-include=chrome-edge/lib/**/*.js --test-coverage-lines=85 --test-coverage-branches=65 --test-coverage-functions=80 test/*.test.js",
     "build:panel": "node tools/build_panel.js",
     "check:panel": "node tools/build_panel.js --check",
     "build:tor": "node tools/build_tor.js",
     "check:tor": "node tools/build_tor.js --check",
     "build": "node tools/build_panel.js && node tools/build_tor.js",
-    "check": "node tools/build_panel.js --check && node tools/build_tor.js --check"
+    "check": "node tools/build_panel.js --check && node tools/build_tor.js --check && node tools/validate_manifest.js chrome-edge/manifest.json && node tools/validate_manifest.js tor/manifest.json"
   },
   "keywords": [
     "web-scraper",

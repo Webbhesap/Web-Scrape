@@ -1,0 +1,55 @@
+# P4.14 — CI gate for `npm run check` (and the full test suite).
+#
+# Runs on every push to tracked branches and every pull request. Fully
+# local/offline: no secrets, no external services — it just installs the
+# single dev dependency (jsdom), verifies the generated panel/tor trees are
+# in sync with the chrome-edge/ sources, validates both extension manifests
+# against the schema whitelist, runs the whole test suite, and enforces the
+# coverage thresholds.
+name: check
+
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+  pull_request:
+
+# If a new push supersedes an in-flight run on the same branch, cancel the
+# older one to save CI minutes.
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Build checks + tests + coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 1) Generated-artifact sync + manifest schema validation:
+      #    panel.html and the whole tor/ tree (including its hash snapshot)
+      #    must match what the build would produce from chrome-edge/ sources.
+      - name: npm run check (panel + tor sync + manifest schema)
+        run: npm run check
+
+      # 2) Full test suite (unit / integration / UI / E2E, jsdom-based).
+      - name: npm test
+        run: npm test
+
+      # 3) Coverage gate (line / branch / function thresholds over
+      #    chrome-edge/src and chrome-edge/lib).
+      - name: npm run test:coverage
+        run: npm run test:coverage
