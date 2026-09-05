@@ -2551,7 +2551,8 @@
 
     document.getElementById('btn-export-csv-direct').addEventListener('click', () => {
       if (state.currentSitemap && state.scrapedData.length > 0) {
-        Exporter.downloadCSV(state.scrapedData, state.currentSitemap.name);
+        // P2.4: honor the persisted per-column CSV types.
+        Exporter.downloadCSV(state.scrapedData, state.currentSitemap.name, ',', state.currentSitemap.columnTypes);
       }
     });
 
@@ -2599,7 +2600,8 @@
     document.getElementById('btn-download-csv').addEventListener('click', () => {
       const delimiter = document.getElementById('export-csv-delimiter').value;
       if (state.currentSitemap && state.scrapedData.length > 0) {
-        Exporter.downloadCSV(state.scrapedData, state.currentSitemap.name, delimiter);
+        // P2.4: honor the persisted per-column CSV types.
+        Exporter.downloadCSV(state.scrapedData, state.currentSitemap.name, delimiter, state.currentSitemap.columnTypes);
       }
     });
 
@@ -2959,6 +2961,48 @@
     const trFilter = document.createElement('tr');
     headers.forEach(h => {
       const th = document.createElement('th');
+      const cell = document.createElement('div');
+      cell.style.display = 'flex';
+      cell.style.flexDirection = 'column';
+      cell.style.gap = '3px';
+
+      // P2.4: per-column CSV type, persisted with the sitemap.
+      const typeSel = document.createElement('select');
+      typeSel.className = 'form-control col-type-select';
+      typeSel.style.fontSize = '10px';
+      typeSel.style.padding = '2px 4px';
+      typeSel.title = t('colTypeHint');
+      const cur = (state.currentSitemap && typeof state.currentSitemap.getColumnType === 'function')
+        ? state.currentSitemap.getColumnType(h) : null;
+      const curKey = !cur ? 'text'
+        : (cur.type === 'number' ? 'number'
+          : (cur.format === 'DD/MM/YYYY' ? 'date-dmy' : 'date-iso'));
+      const typeOpts = [
+        ['text', t('colTypeText')],
+        ['number', t('colTypeNumber')],
+        ['date-iso', t('colTypeDateISO')],
+        ['date-dmy', t('colTypeDateDMY')]
+      ];
+      for (const [val, label] of typeOpts) {
+        const o = document.createElement('option');
+        o.value = val;
+        o.textContent = label;
+        typeSel.appendChild(o);
+      }
+      typeSel.value = curKey;
+      typeSel.setAttribute('data-col-type', h);
+      typeSel.addEventListener('change', async () => {
+        if (!state.currentSitemap || typeof state.currentSitemap.setColumnType !== 'function') return;
+        const v = typeSel.value;
+        if (v === 'number') state.currentSitemap.setColumnType(h, 'number');
+        else if (v === 'date-iso') state.currentSitemap.setColumnType(h, 'date', 'YYYY-MM-DD');
+        else if (v === 'date-dmy') state.currentSitemap.setColumnType(h, 'date', 'DD/MM/YYYY');
+        else state.currentSitemap.setColumnType(h, 'text');
+        try { await AppStorage.saveSitemap(state.currentSitemap); }
+        catch (e) { console.error('Could not persist column type:', e); }
+      });
+      cell.appendChild(typeSel);
+
       const input = document.createElement('input');
       input.type = 'text';
       input.className = 'form-control';
@@ -2973,7 +3017,8 @@
         if (again) again.focus();
       });
       input.setAttribute('data-col-filter', h);
-      th.appendChild(input);
+      cell.appendChild(input);
+      th.appendChild(cell);
       trFilter.appendChild(th);
     });
     trFilter.appendChild(document.createElement('th'));

@@ -86,8 +86,52 @@
         (data.options && typeof data.options === 'object') ? data.options : {}
       );
 
+      // P2.4: per-column CSV types persisted with the sitemap.
+      // Shape: [{ name, type: 'number' | 'date', format?: 'YYYY-MM-DD' | 'DD/MM/YYYY' }]
+      // (absent entry = plain text)
+      this.columnTypes = [];
+      if (Array.isArray(data.columnTypes)) {
+        for (const ct of data.columnTypes) {
+          if (ct && typeof ct.name === 'string' && ct.name
+              && (ct.type === 'number' || ct.type === 'date')) {
+            const entry = { name: ct.name, type: ct.type };
+            if (ct.type === 'date') {
+              entry.format = typeof ct.format === 'string' && ct.format ? ct.format : 'YYYY-MM-DD';
+            }
+            this.columnTypes.push(entry);
+          }
+        }
+      }
+
       this.createdAt = data.createdAt || new Date().toISOString();
       this.updatedAt = data.updatedAt || new Date().toISOString();
+    }
+
+    // P2.4: column type accessors (name -> {type, format?}).
+    getColumnType(name) {
+      return this.columnTypes.find((ct) => ct.name === name) || null;
+    }
+
+    /**
+     * Sets (or, with type 'text', removes) the CSV type of a column.
+     * Returns the sitemap for chaining.
+     */
+    setColumnType(name, type, format) {
+      if (!name) return this;
+      const rest = this.columnTypes.filter((ct) => ct.name !== name);
+      if (type === 'number') {
+        rest.push({ name: name, type: 'number' });
+      } else if (type === 'date') {
+        rest.push({
+          name: name,
+          type: 'date',
+          format: typeof format === 'string' && format ? format : 'YYYY-MM-DD'
+        });
+      }
+      // 'text' (or anything else) just means: no entry.
+      this.columnTypes = rest;
+      this.updatedAt = new Date().toISOString();
+      return this;
     }
 
     validate() {
@@ -246,7 +290,9 @@
         name: this.name,
         startUrl: this.startUrl,
         options: Object.assign({}, this.options),
-        selectors: this.selectors.map(s => s.toJSON())
+        selectors: this.selectors.map(s => s.toJSON()),
+        // P2.4: column types round-trip with the sitemap JSON.
+        columnTypes: this.columnTypes.map((ct) => Object.assign({}, ct))
       };
     }
 

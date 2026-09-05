@@ -54,12 +54,153 @@
     /**
      * Converts records to CSV string.
      */
+    // P2.4 — per-column CSV types (persisted on the sitemap):
+    //   number : normalize localized numbers ("1.234,56", "$1,234.56")
+    //   date   : format Date-like values with the column's date format
+    // Self-contained on purpose: the export path must keep working even in
+    // embeddings where the transform pipeline library is not loaded.
+
+    /**
+     * Parses localized numbers; returns a JS number or null.
+     *
+     * Heuristics:
+     *  - both separators present: the LAST one is the decimal separator
+     *    ("1.234,56" -> 1234.56, "1,234.56" -> 1234.56)
+     *  - a separator appearing 2+ times is a grouping separator
+     *    ("1.234.567" -> 1234567)
+     *  - a single separator with a 1-2 digit tail is decimal
+     *    ("99,90" -> 99.9); a 3-digit tail is grouping
+     *    ("1,234" -> 1234)
+     * Grouping groups must be exactly 3 digits ("1.2.3" is rejected).
+     */
+    static parseColumnNumber(raw) {
+      if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+      if (raw === null || raw === undefined) return null;
+      let s = String(raw).trim();
+      if (!s) return null;
+      s = s.replace(/[\s\u00A0\u202F]/g, '').replace(/[$€£₺¥₹]/g, '');
+      if (!/^[+-]?[\d.,]+$/.test(s) || !/[0-9]/.test(s)) return null;
+
+      let sign = '';
+      if (s[0] === '+' || s[0] === '-') { sign = s[0]; s = s.slice(1); }
+
+      const commas = s.split(',').length - 1;
+      const dots = s.split('.').length - 1;
+      if (commas === 0 && dots === 0) {
+        const n = Number(sign + s);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      let decimalSep = null;
+      let groupingSep = null;
+      if (commas > 0 && dots > 0) {
+        decimalSep = s.lastIndexOf(',') > s.lastIndexOf('.') ? ',' : '.';
+        groupingSep = decimalSep === ',' ? '.' : ',';
+      } else if (commas >= 2) {
+        groupingSep = ',';
+      } else if (dots >= 2) {
+        groupingSep = '.';
+      } else {
+        const sep = commas === 1 ? ',' : '.';
+        const tail = s.slice(s.lastIndexOf(sep) + 1);
+        if (/^\d{1,2}$/.test(tail)) {
+          decimalSep = sep;
+        } else if (/^\d{3}$/.test(tail)) {
+          groupingSep = sep;
+        } else {
+          return null;
+        }
+      }
+
+      const intSegment = decimalSep ? s.slice(0, s.lastIndexOf(decimalSep)) : s;
+      const fracSegment = decimalSep ? s.slice(s.lastIndexOf(decimalSep) + 1) : '';
+
+      if (groupingSep) {
+        const groups = intSegment.split(groupingSep);
+        for (let i = 0; i < groups.length; i++) {
+          if (!/^\d+$/.test(groups[i]) || (i > 0 && groups[i].length !== 3)) return null;
+        }
+      } else if (!/^\d+$/.test(intSegment)) {
+        return null;
+      }
+      if (!/^\d*$/.test(fracSegment) || (!intSegment && !fracSegment)) return null;
+
+      const n = Number(sign + intSegment.split(groupingSep || '').join('') + (fracSegment ? '.' + fracSegment : ''));
+      return Number.isFinite(n) ? n : null;
+    }
+
+    /** Formats Date-like values (Date, ISO string, number) for CSV output. */
+    static formatColumnDate(value, format) {
+      const fmt = typeof format === 'string' && format ? format : 'YYYY-MM-DD';
+      let d = value;
+      if (!(d instanceof Date)) {
+        d = (typeof value === 'number' || (typeof value === 'string' && /^\d{10,13}$/.test(value.trim())))
+          ? new Date(/^\d{13}$/.test(String(value).trim()) ? Number(value) : Number(value) * 1000)
+          : new Date(value);
+      }
+      if (!(d instanceof Date) || isNaN(d.getTime())) return value; // not a date: leave untouched
+      const p2 = (n) => String(n).padStart(2, '0');
+      const tokens = {
+        YYYY: String(d.getFullYear()),
+        MM: p2(d.getMonth() + 1),
+        DD: p2(d.getDate()),
+        HH: p2(d.getHours()),
+        mm: p2(d.getMinutes()),
+        ss: p2(d.getSeconds())
+      };
+      return fmt
+        .replace(/YYYY/g, tokens.YYYY)
+        .replace(/MM/g, tokens.MM)
+        .replace(/DD/g, tokens.DD)
+        .replace(/HH/g, tokens.HH)
+        .replace(/mm/g, tokens.mm)
+        .replace(/ss/g, tokens.ss);
+    }
+
+    /** Applies one column's persisted type to a cell value. */
+    static formatCellValue(value, colCfg) {
+      if (!colCfg || !colCfg.type) return value;
+      if (colCfg.type === 'number') {
+        const n = this.parseColumnNumber(value);
+        return n === null ? value : n;
+      }
+      if (colCfg.type === 'date') {
+        return this.formatColumnDate(value, colCfg.format);
+      }
+      return value;
+    }
+
     static toCSV(data, options = {}) {
       const opts = Object.assign({
         delimiter: ',',
         bom: true,
         header: true
       }, options);
+
+      // P2.4: apply the persisted per-column types before serializing.
+      // columnTypes may be an array of {name, type, format} (the sitemap
+      // shape) or a map of name -> cfg.
+      let byName = null;
+      if (options.columnTypes) {
+        byName = new Map();
+        if (Array.isArray(options.columnTypes)) {
+          for (const ct of options.columnTypes) {
+            if (ct && ct.name) byName.set(ct.name, ct);
+          }
+        } else if (typeof options.columnTypes === 'object') {
+          for (const k of Object.keys(options.columnTypes)) byName.set(k, options.columnTypes[k]);
+        }
+        if (Array.isArray(data)) {
+          data = data.map((row) => {
+            if (!row || typeof row !== 'object') return row;
+            const out = {};
+            for (const key of Object.keys(row)) {
+              out[key] = this.formatCellValue(row[key], byName.get(key) || null);
+            }
+            return out;
+          });
+        }
+      }
 
       return CSV.unparse(data, opts);
     }
@@ -96,8 +237,8 @@
     /**
      * Downloads scraped data as CSV file.
      */
-    static downloadCSV(data, sitemapName, delimiter = ',') {
-      const csvStr = this.toCSV(data, { delimiter: delimiter, bom: true });
+    static downloadCSV(data, sitemapName, delimiter = ',', columnTypes) {
+      const csvStr = this.toCSV(data, { delimiter: delimiter, bom: true, columnTypes: columnTypes });
       const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
       const filename = `${sanitizeFilename(sitemapName)}_data.csv`;
       downloadBlob(blob, filename);
