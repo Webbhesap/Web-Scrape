@@ -837,6 +837,35 @@ tr.selector-row.drop-after td {
   padding: 16px;
   overflow: visible;
 }
+/* P2.1: virtual gallery mode. The viewport becomes the scroll container
+   (the page keeps scrolling normally for small galleries). */
+.gallery-viewport {
+  max-height: none;
+  overflow: visible;
+}
+.virtual-gallery .gallery-viewport {
+  max-height: 75vh;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+/* In virtual mode the grid is an absolute-positioning host, not a grid
+   (positions are computed in JS from the measured card size). */
+.virtual-gallery .gallery-grid {
+  display: block;
+  position: relative;
+}
+.virtual-gallery .gallery-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+}
+/* Fixed image height makes every card the same height, which is what the
+   virtual scroller needs to map row -> pixel offset. */
+.virtual-gallery .gallery-card img {
+  aspect-ratio: auto;
+  height: 160px;
+}
 .gallery-card {
   background: var(--bg-input);
   border: 1px solid var(--border-color);

@@ -22,6 +22,9 @@
     scrapedData: [],
     filteredData: [],
     galleryItems: [],
+    // P2.1: gallery selection lives in state (not in the DOM) because in
+    // virtual mode only the visible window of cards exists in the DOM.
+    gallerySelected: null,
     scraperEngine: null,
     dataPagination: {
       page: 1,
@@ -2311,10 +2314,10 @@
         const n = colRange.value;
         const label = document.getElementById('gallery-columns-label');
         if (label) label.textContent = n;
-        const grid = document.getElementById('gallery-grid');
-        if (grid) grid.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
-        const galleryView = document.getElementById('view-gallery');
-        if (galleryView) galleryView.setAttribute('data-cols', String(n));
+        // P2.1: re-render (virtual mode re-measures the card layout for the
+        // new column count; plain mode just re-flows the grid).
+        galleryMeasureCache = null;
+        renderGallery();
       });
     }
     const btnSlide = document.getElementById('btn-start-slideshow');
@@ -3057,10 +3060,25 @@
     } catch (e) {
       state.scrapedData = [];
     }
+    // P2.1: selection belongs to the gallery being opened — never carry
+    // over indices from a previous sitemap's gallery.
+    state.gallerySelected = null;
     switchView('gallery');
   }
 
+  function gallerySelectedSet() {
+    if (!state.gallerySelected) state.gallerySelected = new Set();
+    return state.gallerySelected;
+  }
+
   function setGallerySelection(selected) {
+    // P2.1: selection state is in state.gallerySelected (a Set of item
+    // indices); the DOM checkboxes are just a view over it, which is what
+    // makes "select all" work in virtual mode where off-screen cards are
+    // not in the DOM at all.
+    const sel = gallerySelectedSet();
+    sel.clear();
+    if (selected) state.galleryItems.forEach((_, i) => sel.add(i));
     document.querySelectorAll('#gallery-grid .gallery-select').forEach((chk) => {
       chk.checked = selected;
       const card = chk.closest('.gallery-card');
@@ -3072,9 +3090,201 @@
   function updateGallerySelectionBadge() {
     const badge = document.getElementById('gallery-selected-badge');
     if (!badge) return;
-    const n = document.querySelectorAll('#gallery-grid .gallery-select:checked').length;
+    const n = state.gallerySelected ? state.gallerySelected.size : 0;
     badge.style.display = n > 0 ? 'inline-block' : 'none';
     badge.textContent = t('nSelected', { n: n });
+  }
+
+  // --- P2.1: gallery virtualization --------------------------------------
+  // Galleries with tens of thousands of images used to put every card (img
+  // + input + buttons) into the DOM at once. In "virtual" mode the grid
+  // becomes an absolutely-positioned window: only the rows inside the
+  // viewport (plus a buffer) exist as DOM nodes and the window is re-rendered
+  // on scroll. The fixed image height (CSS, .virtual-gallery) is what lets
+  // us map row -> pixel offset without measuring every card.
+
+  const GALLERY_VIRTUAL_THRESHOLD = 120; // below this: plain grid, page scroll
+  const GALLERY_BUFFER_ROWS = 2;
+  const GALLERY_GAP = 12;
+  const GALLERY_PAD = 16;
+  let galleryMeasureCache = null; // {cols, cardW, cardH} — measured once per layout
+
+  function galleryCols() {
+    const v = parseInt((document.getElementById('gallery-columns') || {}).value, 10);
+    return Number.isFinite(v) && v >= 1 ? Math.min(v, 12) : 4;
+  }
+
+  function galleryMeasureCard(grid, cols) {
+    // Measure one card at the real card width (cheap: single probe, cached
+    // until the layout changes).
+    const containerW = (grid.clientWidth || 900) - GALLERY_PAD * 2;
+    const cardW = Math.max(80, (containerW - (cols - 1) * GALLERY_GAP) / cols);
+    const probe = document.createElement('div');
+    probe.className = 'gallery-card';
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style.width = Math.floor(cardW) + 'px';
+    const img = document.createElement('img');
+    img.alt = '';
+    const meta = document.createElement('div');
+    meta.className = 'gallery-meta';
+    const input = document.createElement('input');
+    input.className = 'form-control gallery-url';
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '6px';
+    for (const cls of ['btn btn-secondary btn-sm', 'btn btn-danger btn-sm']) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = cls;
+      b.textContent = 'x';
+      actions.appendChild(b);
+    }
+    meta.appendChild(input);
+    meta.appendChild(actions);
+    probe.appendChild(img);
+    probe.appendChild(meta);
+    document.body.appendChild(probe);
+    const h = probe.offsetHeight || 240;
+    probe.remove();
+    return { cardW: Math.floor(cardW), cardH: Math.floor(h) };
+  }
+
+  function galleryMeasure(cols, grid) {
+    if (galleryMeasureCache && galleryMeasureCache.cols === cols) return galleryMeasureCache;
+    const m = galleryMeasureCard(grid, cols);
+    galleryMeasureCache = { cols: cols, cardW: m.cardW, cardH: m.cardH };
+    return galleryMeasureCache;
+  }
+
+  function buildGalleryCard(item, idx) {
+    const card = document.createElement('div');
+    card.className = 'gallery-card';
+    card.dataset.gidx = String(idx);
+    const img = document.createElement('img');
+    img.setAttribute('loading', 'lazy'); // avoid loading off-screen images
+    img.setAttribute('decoding', 'async');
+    img.src = item.url;
+    img.alt = '';
+    img.addEventListener('click', () => openSlideshow(idx));
+    const meta = document.createElement('div');
+    meta.className = 'gallery-meta';
+    const input = document.createElement('input');
+    input.className = 'form-control gallery-url';
+    input.value = item.url;
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '6px';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn btn-secondary btn-sm';
+    saveBtn.textContent = t('saveUrl');
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn btn-danger btn-sm';
+    delBtn.textContent = t('delete');
+    const sel = gallerySelectedSet();
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'gallery-select';
+    chk.checked = sel.has(idx);
+    card.classList.toggle('selected', chk.checked);
+    chk.addEventListener('change', () => {
+      if (chk.checked) sel.add(idx); else sel.delete(idx);
+      card.classList.toggle('selected', chk.checked);
+      updateGallerySelectionBadge();
+    });
+    saveBtn.addEventListener('click', async () => {
+      const next = input.value.trim();
+      const rec = state.scrapedData[item.rowIdx];
+      if (rec) rec[item.key] = next;
+      item.url = next;
+      if (state.currentSitemap) {
+      try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
+      catch (e) { handleDataSaveError(e, 'manual edit'); }
+    }
+      renderGallery();
+    });
+    delBtn.addEventListener('click', async () => {
+      const rec = state.scrapedData[item.rowIdx];
+      if (rec) rec[item.key] = '';
+      if (state.currentSitemap) {
+      try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
+      catch (e) { handleDataSaveError(e, 'manual edit'); }
+    }
+      renderGallery();
+    });
+    actions.appendChild(saveBtn);
+    actions.appendChild(delBtn);
+    meta.appendChild(input);
+    meta.appendChild(actions);
+    card.appendChild(chk);
+    card.appendChild(img);
+    card.appendChild(meta);
+    return card;
+  }
+
+  function galleryIsVirtual() {
+    const view = document.getElementById('view-gallery');
+    return Boolean(view && view.classList.contains('virtual-gallery'));
+  }
+
+  function renderGalleryWindow() {
+    const grid = document.getElementById('gallery-grid');
+    const viewport = document.getElementById('gallery-viewport');
+    const items = state.galleryItems;
+    if (!grid || !items.length) return;
+    const cols = galleryCols();
+    const measured = galleryMeasure(cols, grid);
+    const rowStep = measured.cardH + GALLERY_GAP;
+    const viewportH = (viewport && viewport.clientHeight) || 600;
+    const totalRows = Math.ceil(items.length / cols);
+    // Real browsers clamp scrollTop to the scrollable extent; jsdom does
+    // not, so clamp here to keep the window computation sane.
+    const maxScrollTop = Math.max(0, GALLERY_PAD * 2 + totalRows * rowStep - viewportH);
+    const scrollTop = Math.min((viewport && viewport.scrollTop) || 0, maxScrollTop);
+    const firstRow = Math.max(0, Math.floor(scrollTop / rowStep) - GALLERY_BUFFER_ROWS);
+    const lastRow = Math.min(totalRows - 1, Math.ceil((scrollTop + viewportH) / rowStep) + GALLERY_BUFFER_ROWS);
+    const firstIdx = firstRow * cols;
+    const lastIdx = Math.min(items.length - 1, (lastRow + 1) * cols - 1);
+    grid.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (let idx = firstIdx; idx <= lastIdx; idx++) {
+      const row = Math.floor(idx / cols);
+      const col = idx % cols;
+      const card = buildGalleryCard(items[idx], idx);
+      card.style.width = measured.cardW + 'px';
+      card.style.height = measured.cardH + 'px';
+      card.style.left = (GALLERY_PAD + col * (measured.cardW + GALLERY_GAP)) + 'px';
+      card.style.top = (GALLERY_PAD + row * rowStep) + 'px';
+      frag.appendChild(card);
+    }
+    grid.appendChild(frag);
+  }
+
+  let galleryScrollRaf = 0;
+  function galleryOnScroll() {
+    if (galleryScrollRaf) return;
+    galleryScrollRaf = (typeof requestAnimationFrame === 'function')
+      ? requestAnimationFrame(() => { galleryScrollRaf = 0; if (galleryIsVirtual()) renderGalleryWindow(); })
+      : (setTimeout(() => { galleryScrollRaf = 0; if (galleryIsVirtual()) renderGalleryWindow(); }, 16) || 1);
+  }
+
+  let galleryResizeTimer = 0;
+  function galleryOnResize() {
+    clearTimeout(galleryResizeTimer);
+    galleryResizeTimer = setTimeout(() => {
+      if (!galleryIsVirtual()) return;
+      const grid = document.getElementById('gallery-grid');
+      const items = state.galleryItems;
+      if (!grid || !items.length) return;
+      const cols = galleryCols();
+      galleryMeasureCache = null; // re-measure at the new width
+      const measured = galleryMeasure(cols, grid);
+      const totalRows = Math.ceil(items.length / cols);
+      grid.style.height = String(GALLERY_PAD * 2 + totalRows * (measured.cardH + GALLERY_GAP)) + 'px';
+      renderGalleryWindow();
+    }, 100);
   }
 
   function renderGallery() {
@@ -3082,77 +3292,52 @@
     const badge = document.getElementById('gallery-count-badge');
     if (!grid) return;
     state.galleryItems = collectGalleryItems(state.scrapedData);
+    // Drop selection indices that no longer exist (rows were deleted).
+    if (state.gallerySelected) {
+      for (const idx of [...state.gallerySelected]) {
+        if (idx >= state.galleryItems.length) state.gallerySelected.delete(idx);
+      }
+    }
     if (badge) badge.textContent = t('nImages', { n: state.galleryItems.length });
-    const cols = (document.getElementById('gallery-columns') || {}).value || 4;
-    grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    const cols = galleryCols();
     const galleryView = document.getElementById('view-gallery');
-    if (galleryView) galleryView.setAttribute('data-cols', String(cols));
+    const virtual = state.galleryItems.length > GALLERY_VIRTUAL_THRESHOLD;
+    if (galleryView) {
+      galleryView.setAttribute('data-cols', String(cols));
+      galleryView.classList.toggle('virtual-gallery', virtual);
+    }
+    if (virtual && typeof window !== 'undefined') {
+      if (!window.__galleryListenersAttached) {
+        window.__galleryListenersAttached = true;
+        window.addEventListener('resize', galleryOnResize);
+      }
+    }
+    const viewport = document.getElementById('gallery-viewport');
     grid.innerHTML = '';
     if (state.galleryItems.length === 0) {
+      grid.style.height = '';
       grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">' + t('noImages') + '</div><div>' + t('noImagesHint') + '</div></div>';
+      updateGallerySelectionBadge();
       return;
     }
-    state.galleryItems.forEach((item, idx) => {
-      const card = document.createElement('div');
-      card.className = 'gallery-card';
-      const img = document.createElement('img');
-      img.setAttribute('loading', 'lazy'); // avoid loading hundreds of off-screen images at once
-      img.setAttribute('decoding', 'async');
-      img.src = item.url;
-      img.alt = '';
-      img.addEventListener('click', () => openSlideshow(idx));
-      const meta = document.createElement('div');
-      meta.className = 'gallery-meta';
-      const input = document.createElement('input');
-      input.className = 'form-control gallery-url';
-      input.value = item.url;
-      const actions = document.createElement('div');
-      actions.style.display = 'flex';
-      actions.style.gap = '6px';
-      const saveBtn = document.createElement('button');
-      saveBtn.type = 'button';
-      saveBtn.className = 'btn btn-secondary btn-sm';
-      saveBtn.textContent = t('saveUrl');
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.className = 'btn btn-danger btn-sm';
-      delBtn.textContent = t('delete');
-      const chk = document.createElement('input');
-      chk.type = 'checkbox';
-      chk.className = 'gallery-select';
-      chk.addEventListener('change', () => {
-        card.classList.toggle('selected', chk.checked);
-        updateGallerySelectionBadge();
-      });
-      saveBtn.addEventListener('click', async () => {
-        const next = input.value.trim();
-        const rec = state.scrapedData[item.rowIdx];
-        if (rec) rec[item.key] = next;
-        item.url = next;
-        if (state.currentSitemap) {
-        try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
-        catch (e) { handleDataSaveError(e, 'manual edit'); }
-      }
-        renderGallery();
-      });
-      delBtn.addEventListener('click', async () => {
-        const rec = state.scrapedData[item.rowIdx];
-        if (rec) rec[item.key] = '';
-        if (state.currentSitemap) {
-        try { await AppStorage.saveScrapedData(state.currentSitemap._id, state.scrapedData); }
-        catch (e) { handleDataSaveError(e, 'manual edit'); }
-      }
-        renderGallery();
-      });
-      actions.appendChild(saveBtn);
-      actions.appendChild(delBtn);
-      meta.appendChild(input);
-      meta.appendChild(actions);
-      card.appendChild(chk);
-      card.appendChild(img);
-      card.appendChild(meta);
-      grid.appendChild(card);
-    });
+    if (!virtual) {
+      grid.style.height = '';
+      grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+      if (viewport) viewport.scrollTop = 0;
+      state.galleryItems.forEach((item, idx) => grid.appendChild(buildGalleryCard(item, idx)));
+      updateGallerySelectionBadge();
+      return;
+    }
+    // Virtual mode: the grid is a relative host with explicit total height;
+    // cards are absolutely positioned inside the visible window.
+    const measured = galleryMeasure(cols, grid);
+    const totalRows = Math.ceil(state.galleryItems.length / cols);
+    grid.style.height = String(GALLERY_PAD * 2 + totalRows * (measured.cardH + GALLERY_GAP)) + 'px';
+    grid.style.gridTemplateColumns = '';
+    if (viewport) {
+      viewport.onscroll = galleryOnScroll;
+      renderGalleryWindow();
+    }
     updateGallerySelectionBadge();
   }
 
@@ -3296,14 +3481,11 @@
     if (typeof SimpleZip === 'undefined') return;
     let items = state.galleryItems || [];
     if (selectedOnly) {
-      const checks = document.querySelectorAll('#gallery-grid .gallery-select:checked');
-      const urls = new Set();
-      checks.forEach((c) => {
-        const card = c.closest('.gallery-card');
-        const im = card && card.querySelector('img');
-        if (im) urls.add(im.src);
-      });
-      items = items.filter((it) => urls.has(it.url));
+      // P2.1: selection comes from state — in virtual mode the off-screen
+      // cards (and their checkboxes) do not exist in the DOM.
+      const sel = state.gallerySelected;
+      if (!sel || sel.size === 0) return;
+      items = items.filter((it, i) => sel.has(i));
     }
     if (!items.length) return;
     const files = [];
