@@ -837,6 +837,12 @@
       });
     }
 
+    // P2.2: live preview reacts to every input that feeds the pipeline.
+    if (elements.fieldSelectorRegex) elements.fieldSelectorRegex.addEventListener('input', updateTransformPreview);
+    if (elements.fieldSelectorDefault) elements.fieldSelectorDefault.addEventListener('input', updateTransformPreview);
+    const tfSample = document.getElementById('tf-preview-sample');
+    if (tfSample) tfSample.addEventListener('input', updateTransformPreview);
+
     // Selector Picker Buttons
     document.getElementById('btn-picker-select').addEventListener('click', () => {
       launchElementPicker('select');
@@ -902,14 +908,14 @@
         find.style.flex = '1';
         find.placeholder = 'find (regex)';
         find.value = step.find || '';
-        find.addEventListener('input', (e) => { step.find = e.target.value; });
+        find.addEventListener('input', (e) => { step.find = e.target.value; updateTransformPreview(); });
         const replace = document.createElement('input');
         replace.type = 'text';
         replace.className = 'form-control form-control-mono';
         replace.style.flex = '1';
         replace.placeholder = 'replace ($1 for groups)';
         replace.value = step.replace == null ? '' : step.replace;
-        replace.addEventListener('input', (e) => { step.replace = e.target.value; });
+        replace.addEventListener('input', (e) => { step.replace = e.target.value; updateTransformPreview(); });
         row.appendChild(find);
         row.appendChild(replace);
       }
@@ -944,6 +950,49 @@
 
       listEl.appendChild(row);
     });
+    // P2.2: re-run the preview after the list changed (add/remove/move).
+    updateTransformPreview();
+  }
+
+  // P2.2 — live pipeline preview: applies what is being edited (regex
+  // extraction, then the transforms in order, then the default for
+  // empties) to a sample value the user types, so the exact stored result
+  // is visible without running a crawl. The same primitives the engine
+  // uses (RegExp capture-group semantics + TextTransforms.postProcess)
+  // make the preview faithful to the real extraction.
+  function updateTransformPreview() {
+    const out = document.getElementById('tf-preview-result');
+    const sampleEl = document.getElementById('tf-preview-sample');
+    if (!out || !sampleEl) return;
+    const sample = sampleEl.value;
+    const regex = (elements.fieldSelectorRegex && elements.fieldSelectorRegex.value) || '';
+    const defaultValue = (elements.fieldSelectorDefault && elements.fieldSelectorDefault.value) || '';
+    if (!sample) {
+      out.textContent = '';
+      out.style.color = '';
+      return;
+    }
+    // 1) regex extraction — identical semantics to SelectorEngine.applyRegex.
+    let value = sample;
+    if (regex && regex.trim()) {
+      let match = null;
+      try {
+        match = String(sample).match(new RegExp(regex));
+      } catch (e) {
+        out.style.color = '#f43f5e';
+        out.textContent = '✖ ' + t('tfPreviewBadRegex') + ': ' + e.message;
+        return;
+      }
+      value = (!match) ? '' : (match[1] !== undefined ? match[1] : match[0]);
+    }
+    // 2) transforms in order + default for empties (engine pipeline).
+    const result = (typeof TextTransforms !== 'undefined')
+      ? TextTransforms.postProcess(value, { transforms: state.editingTransforms, defaultValue: defaultValue })
+      : (value === '' ? defaultValue : value);
+    const shown = (result === undefined || result === null) ? '' : String(result);
+    out.style.color = '';
+    // JSON.stringify disambiguates "123" (string) from 123 (number).
+    out.textContent = shown === '' ? t('tfPreviewEmpty') : JSON.stringify(shown);
   }
 
   function openAddSelector() {
@@ -962,6 +1011,7 @@
     state.editingTransforms = [];
     renderTransformsEditor();
     if (elements.fieldSelectorDefault) elements.fieldSelectorDefault.value = '';
+    updateTransformPreview();
 
     renderParentSelectorsCheckboxes([state.currentParentSelector]);
     switchView('selector-edit');
@@ -1019,6 +1069,7 @@
     }
 
     renderParentSelectorsCheckboxes(sel.parentSelectors);
+    updateTransformPreview();
     switchView('selector-edit');
   }
 

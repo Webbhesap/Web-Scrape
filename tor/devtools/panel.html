@@ -392,6 +392,14 @@
               <input type="text" id="field-selector-default" class="form-control" placeholder="e.g. N/A">
             </div>
 
+            <!-- P2.2: live preview of the pipeline being edited -->
+            <div class="form-group" id="group-transform-preview">
+              <label class="form-label" for="tf-preview-sample" data-i18n="tfPreviewTitle">Preview with sample data</label>
+              <input type="text" id="tf-preview-sample" class="form-control form-control-mono" placeholder='e.g. "  $1.234,56 TL  "' style="flex:1;">
+              <div id="tf-preview-result" style="margin-top:6px; font-family: var(--font-mono); font-size:12px; min-height:18px; word-break: break-all;"></div>
+              <div class="form-help" data-i18n="tfPreviewHelp">The pipeline you are editing (regex extraction, then the transforms in order, then the default for empties) is applied live to the sample, so you can see exactly what will be stored without running a crawl.</div>
+            </div>
+
             <div class="form-group">
               <label class="form-label"><span data-i18n="parentSelectors">Parent Selectors</span> <span style="color:#f43f5e;">*</span></label>
               <div id="parent-selectors-list" style="max-height: 140px; overflow-y: auto; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px;">
