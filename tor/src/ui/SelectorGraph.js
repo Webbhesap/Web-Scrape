@@ -45,6 +45,7 @@
       this.startX = 0;
       this.startY = 0;
       this._windowHandlers = null;
+      this._dragId = null; // P2.3: id of the node currently being dragged
     }
 
     render() {
@@ -94,6 +95,7 @@
         <button id="ws-graph-zoom-in" class="ws-btn ws-btn-secondary" style="padding:4px 8px;font-size:14px;font-weight:bold;">+</button>
         <button id="ws-graph-zoom-out" class="ws-btn ws-btn-secondary" style="padding:4px 8px;font-size:14px;font-weight:bold;">-</button>
         <button id="ws-graph-reset" class="ws-btn ws-btn-secondary" style="padding:4px 8px;font-size:12px;">Reset</button>
+        <button id="ws-graph-png" class="ws-btn ws-btn-secondary" style="padding:4px 8px;font-size:12px;" title="Export the selector graph as a PNG image">PNG</button>
       `;
       this.container.appendChild(controls);
 
@@ -182,6 +184,52 @@
         });
       }
 
+      // P2.3 — drag & drop re-parenting. Drag a node onto another node to
+      // make that node its parent (dropping onto _root moves it back to the
+      // root). The sitemap model enforces the cycle rule via
+      // reparentSelector/wouldCreateCycle; the graph surfaces the outcome
+      // through the onReparent / onReparentError callbacks.
+      if (node.id !== '_root') {
+        card.setAttribute('draggable', 'true');
+        card.addEventListener('dragstart', (e) => {
+          this._dragId = node.id;
+          card.style.opacity = '0.5';
+          if (e.dataTransfer) {
+            e.dataTransfer.setData('text/plain', node.id);
+            e.dataTransfer.effectAllowed = 'move';
+          }
+        });
+        card.addEventListener('dragend', () => {
+          this._dragId = null;
+          card.style.opacity = '';
+        });
+      }
+      card.addEventListener('dragover', (e) => {
+        if (!this._dragId || this._dragId === node.id) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        card.style.outline = '3px dashed #f59e0b';
+        card.style.outlineOffset = '2px';
+      });
+      card.addEventListener('dragleave', () => {
+        card.style.outline = '';
+        card.style.outlineOffset = '';
+      });
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.style.outline = '';
+        card.style.outlineOffset = '';
+        const dragId = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || this._dragId || null;
+        this._dragId = null;
+        if (!dragId || dragId === node.id || dragId === '_root') return;
+        if (this.sitemap && typeof this.sitemap.wouldCreateCycle === 'function'
+            && this.sitemap.wouldCreateCycle(dragId, node.id)) {
+          if (this.options.onReparentError) this.options.onReparentError(dragId, node.id);
+          return;
+        }
+        if (this.options.onReparent) this.options.onReparent(dragId, node.id);
+      });
+
       el.appendChild(card);
 
       // Children container
@@ -208,6 +256,170 @@
       }
 
       return el;
+    }
+
+    // --- P2.3: PNG export --------------------------------------------------
+    // The on-screen graph is HTML, so the export does NOT screenshot the
+    // DOM — it re-renders the same tree to a <canvas> from the pure layout
+    // below (2x scale for crisp text) and encodes it as a PNG blob. No
+    // external library is involved (100% local).
+
+    layoutTree() {
+      const NODE_W = 180;
+      const NODE_H = 70;
+      const H_GAP = 26;
+      const V_GAP = 48;
+      const PAD = 24;
+      const tree = this.buildTree();
+
+      const measure = (node) => {
+        if (!node.children || node.children.length === 0) {
+          node._subtreeW = NODE_W;
+          return node._subtreeW;
+        }
+        let sum = 0;
+        for (const c of node.children) sum += measure(c) + H_GAP;
+        sum -= H_GAP;
+        node._subtreeW = Math.max(NODE_W, sum);
+        return node._subtreeW;
+      };
+      measure(tree);
+
+      const nodes = [];
+      const edges = [];
+      const place = (node, left, depth) => {
+        const x = left + (node._subtreeW - NODE_W) / 2;
+        const y = PAD + depth * (NODE_H + V_GAP);
+        node._x = x;
+        node._y = y;
+        nodes.push({
+          id: node.id,
+          name: node.name,
+          type: node.type,
+          selector: node.selector || '',
+          multiple: !!node.multiple,
+          isCycle: !!node.isCycle,
+          x: x, y: y, w: NODE_W, h: NODE_H
+        });
+        if (node.children && node.children.length > 0) {
+          const kidsTotal = node.children.reduce((a, c) => a + c._subtreeW, 0)
+            + H_GAP * (node.children.length - 1);
+          let cursor = left + (node._subtreeW - kidsTotal) / 2;
+          for (const c of node.children) {
+            place(c, cursor, depth + 1);
+            edges.push({
+              from: node.id,
+              to: c.id,
+              x1: x + NODE_W / 2,
+              y1: y + NODE_H,
+              x2: c._x + NODE_W / 2,
+              y2: c._y
+            });
+            cursor += c._subtreeW + H_GAP;
+          }
+        }
+      };
+      place(tree, PAD, 0);
+
+      const maxY = nodes.reduce((m, n) => Math.max(m, n.y), 0);
+      return {
+        nodes: nodes,
+        edges: edges,
+        width: PAD * 2 + tree._subtreeW,
+        height: maxY + NODE_H + PAD,
+        nodeW: NODE_W,
+        nodeH: NODE_H
+      };
+    }
+
+    _roundRectPath(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    _fitText(str, maxW) {
+      const s = String(str);
+      const maxChars = Math.max(6, Math.floor(maxW / 7));
+      return s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s;
+    }
+
+    async exportPng() {
+      const layout = this.layoutTree();
+      const SCALE = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(layout.width * SCALE));
+      canvas.height = Math.max(1, Math.round(layout.height * SCALE));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context is not available');
+      ctx.scale(SCALE, SCALE);
+
+      ctx.fillStyle = '#0b1220';
+      ctx.fillRect(0, 0, layout.width, layout.height);
+
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 2;
+      for (const e of layout.edges) {
+        ctx.beginPath();
+        ctx.moveTo(e.x1, e.y1);
+        ctx.bezierCurveTo(e.x1, (e.y1 + e.y2) / 2, e.x2, (e.y1 + e.y2) / 2, e.x2, e.y2);
+        ctx.stroke();
+      }
+
+      for (const n of layout.nodes) {
+        const colors = TYPE_COLORS[n.type] || TYPE_COLORS.SelectorText;
+        this._roundRectPath(ctx, n.x, n.y, n.w, n.h, 8);
+        ctx.fillStyle = colors.bg;
+        ctx.fill();
+        ctx.strokeStyle = colors.border;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = colors.border;
+        ctx.font = 'bold 10px sans-serif';
+        const tag = colors.tag + (n.multiple ? ' (MULTIPLE)' : '') + (n.isCycle ? ' (RECURSIVE)' : '');
+        ctx.fillText(tag, n.x + n.w / 2, n.y + 18);
+        ctx.fillStyle = colors.text;
+        ctx.font = '600 13px sans-serif';
+        ctx.fillText(this._fitText(n.name, n.w - 20), n.x + n.w / 2, n.y + 38);
+        if (n.selector) {
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '11px monospace';
+          ctx.fillText(this._fitText(n.selector, n.w - 20), n.x + n.w / 2, n.y + 56);
+        }
+      }
+
+      return new Promise((resolve, reject) => {
+        if (typeof canvas.toBlob === 'function') {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error('PNG encoding failed'));
+          }, 'image/png');
+        } else {
+          reject(new Error('Canvas.toBlob is not supported here'));
+        }
+      });
+    }
+
+    async downloadPng(filename) {
+      if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+        throw new Error('URL.createObjectURL is not available');
+      }
+      const blob = await this.exportPng();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'selectors.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => {
+        try { URL.revokeObjectURL(url); } catch (e) {}
+      }, 1000);
     }
 
     bindEvents() {
@@ -238,6 +450,19 @@
           this.translateX = 0;
           this.translateY = 0;
           this.updateTransform();
+        });
+      }
+
+      // P2.3: export the graph as a PNG (drawn to canvas, not a DOM shot).
+      const pngBtn = this.container.querySelector('#ws-graph-png');
+      if (pngBtn) {
+        pngBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const name = ((this.sitemap && this.sitemap.name) || 'sitemap')
+            .replace(/[^\w.-]+/g, '_');
+          this.downloadPng(name + '_selectors.png').catch((err) => {
+            console.warn('PNG export failed:', err);
+          });
         });
       }
 

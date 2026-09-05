@@ -3064,6 +3064,20 @@
     const graph = new SelectorGraph(elements.graphContainer, state.currentSitemap, {
       onNodeClick: (selId) => {
         openEditSelector(selId);
+      },
+      // P2.3: drag & drop re-parenting — the model validates (cycle rule)
+      // and mutates; the dashboard persists and re-renders.
+      onReparent: async (movedId, newParentId) => {
+        if (!state.currentSitemap.reparentSelector(movedId, newParentId)) return;
+        try {
+          await AppStorage.saveSitemap(state.currentSitemap);
+        } catch (e) {
+          console.error('Could not persist re-parented sitemap:', e);
+        }
+        renderSelectorGraph();
+      },
+      onReparentError: (movedId, targetId) => {
+        try { alert(t('graphReparentCycle')); } catch (e) {}
       }
     });
     graph.render();
