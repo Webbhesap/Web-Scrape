@@ -299,6 +299,99 @@
       downloadBlob(blob, filename);
     }
 
+    // P3.9 — Markdown + XML exports and the meta.json bundle.
+
+    /** Union of record keys, in first-seen order. */
+    static recordFields(data) {
+      const fields = [];
+      const seen = new Set();
+      for (const row of Array.isArray(data) ? data : []) {
+        if (!row || typeof row !== 'object') continue;
+        for (const key of Object.keys(row)) {
+          if (!seen.has(key)) { seen.add(key); fields.push(key); }
+        }
+      }
+      return fields;
+    }
+
+    /** Converts records to a GitHub-flavored Markdown table. */
+    static toMarkdown(data, title) {
+      const rows = Array.isArray(data) ? data : [];
+      const esc = (v) => String(v === undefined || v === null ? '' : v)
+        .replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
+      let out = '';
+      if (title) out += `# ${String(title).replace(/\|/g, '\\|')}\n\n`;
+      if (rows.length === 0) {
+        return out + '_No records._\n';
+      }
+      const fields = this.recordFields(rows);
+      out += `| ${fields.map((f) => esc(f)).join(' | ')} |\n`;
+      out += `| ${fields.map(() => '---').join(' | ')} |\n`;
+      for (const row of rows) {
+        out += `| ${fields.map((f) => esc(row ? row[f] : '')).join(' | ')} |\n`;
+      }
+      return out;
+    }
+
+    /** Converts records to a simple, well-formed XML document. */
+    static toXML(data, rootName) {
+      const root = String(rootName || 'scrapedData').replace(/[^A-Za-z0-9_]/g, '') || 'scrapedData';
+      const tag = (name) => {
+        const clean = String(name).replace(/[^A-Za-z0-9_.]/g, '_');
+        return /^[A-Za-z_]/.test(clean) ? clean : 'f_' + clean;
+      };
+      const esc = (v) => String(v === undefined || v === null ? '' : v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\r?\n/g, ' ');
+      const rows = Array.isArray(data) ? data : [];
+      let out = `<?xml version="1.0" encoding="UTF-8"?>\n<${root} count="${rows.length}">\n`;
+      for (const row of rows) {
+        out += '  <record>\n';
+        for (const f of this.recordFields(rows)) {
+          const t = tag(f);
+          out += `    <${t}>${esc(row ? row[f] : '')}</${t}>\n`;
+        }
+        out += '  </record>\n';
+      }
+      out += `</${root}>\n`;
+      return out;
+    }
+
+    /**
+     * Meta document describing a data export — written into the ZIP bundle
+     * (meta.json) and reused by tests.
+     */
+    static buildMeta(sitemap, data) {
+      const rows = Array.isArray(data) ? data : [];
+      return {
+        generator: 'Web-Scrape dashboard (chrome-edge)',
+        generatorVersion: '1.0.0',
+        sitemapId: sitemap && sitemap._id ? sitemap._id : (sitemap && sitemap.id) || null,
+        sitemapName: sitemap && sitemap.name ? sitemap.name : null,
+        sourceUrls: sitemap && Array.isArray(sitemap.startUrl) ? sitemap.startUrl.slice() : [],
+        exportedAt: new Date().toISOString(),
+        recordCount: rows.length,
+        columns: this.recordFields(rows),
+        columnTypes: sitemap && Array.isArray(sitemap.columnTypes)
+          ? sitemap.columnTypes.map((ct) => Object.assign({}, ct))
+          : []
+      };
+    }
+
+    static downloadMarkdown(data, sitemapName) {
+      const md = this.toMarkdown(data, sitemapName);
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+      downloadBlob(blob, `${sanitizeFilename(sitemapName)}_data.md`);
+    }
+
+    static downloadXML(data, sitemapName) {
+      const xml = this.toXML(data);
+      const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
+      downloadBlob(blob, `${sanitizeFilename(sitemapName)}_data.xml`);
+    }
+
     /**
      * Builds a backup object containing every sitemap definition.
      */

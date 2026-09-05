@@ -2681,6 +2681,53 @@
       });
     }
 
+    // P3.9: Markdown + XML exports and the ZIP bundle with meta.json.
+    const btnMd = document.getElementById('btn-download-md');
+    if (btnMd) {
+      btnMd.addEventListener('click', () => {
+        if (state.currentSitemap && state.scrapedData.length > 0) {
+          Exporter.downloadMarkdown(state.scrapedData, state.currentSitemap.name);
+        }
+      });
+    }
+
+    const btnXml = document.getElementById('btn-download-xml');
+    if (btnXml) {
+      btnXml.addEventListener('click', () => {
+        if (state.currentSitemap && state.scrapedData.length > 0) {
+          Exporter.downloadXML(state.scrapedData, state.currentSitemap.name);
+        }
+      });
+    }
+
+    const btnZip = document.getElementById('btn-download-zip');
+    if (btnZip) {
+      btnZip.addEventListener('click', async () => {
+        if (typeof SimpleZip === 'undefined' || !state.currentSitemap || state.scrapedData.length === 0) return;
+        const sm = state.currentSitemap;
+        const rows = state.scrapedData;
+        const base = String(sm.name || 'data').replace(/[^a-zA-Z0-9_.-]/g, '_').replace(/_{2,}/g, '_');
+        try {
+          const enc = new TextEncoder();
+          const files = [
+            { name: `${base}_data.csv`, data: enc.encode(Exporter.toCSV(rows, { bom: true, columnTypes: sm.columnTypes })) },
+            { name: `${base}_data.json`, data: enc.encode(Exporter.toJSON(rows, true)) },
+            { name: `${base}_data.md`, data: enc.encode(Exporter.toMarkdown(rows, sm.name)) },
+            { name: `${base}_data.xml`, data: enc.encode(Exporter.toXML(rows, 'scrapedData')) },
+            { name: 'meta.json', data: enc.encode(Exporter.toJSON(Exporter.buildMeta(sm, rows), true)) }
+          ];
+          const zipBytes = await SimpleZip.build(files);
+          const blob = new Blob([zipBytes], { type: 'application/zip' });
+          const url = URL.createObjectURL(blob);
+          triggerDownload(url, `${base}_export.zip`);
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+        } catch (e) {
+          console.error('ZIP bundle export failed:', e);
+          alert(t('zipBuildFailed'));
+        }
+      });
+    }
+
     const btnCopyCsv = document.getElementById('btn-copy-data-csv');
     if (btnCopyCsv) {
       btnCopyCsv.addEventListener('click', async () => {
